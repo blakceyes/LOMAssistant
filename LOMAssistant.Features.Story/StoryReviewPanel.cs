@@ -23,6 +23,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 	private Rect _windowRect;
 	private float _scale = -1f;
 	private float _opacity = -1f;
+	private int _fontMode = -1;
 	private string _message = "";
 	private float _messageUntil;
 	private string _tooltip = "";
@@ -149,6 +150,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 	{
 		bool rescale = !Mathf.Approximately(scale, _scale);
 		_scale = scale;
+		_fontMode = ModFont.Mode;
 		_opacity = PanelOpacity;
 		Color Faded(Color c) => new Color(c.r, c.g, c.b, c.a * _opacity);
 		_textures.Clear();
@@ -157,6 +159,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		GUIStyle Plain(int size, Color color, bool wrap = true)
 		{
 			var s = new GUIStyle(GUI.skin.label) { fontSize = Mathf.Max(10, Mathf.RoundToInt(size * scale)), wordWrap = wrap, richText = true };
+			ModFont.Apply(s);
 			s.normal.textColor = color;
 			s.padding = new RectOffset(0, 0, 0, 0);
 			return s;
@@ -174,6 +177,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			return s;
 		}
 		_window = new GUIStyle(GUI.skin.window);
+		ModFont.Apply(_window);
 		_window.normal.background = _window.onNormal.background = Framed(Faded(Paper), Ink);
 		_window.border = new RectOffset(2, 2, 2, 2);
 		_window.padding = new RectOffset((int)S(16), (int)S(16), (int)S(12), (int)S(12));
@@ -193,6 +197,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		_button = Outlined(new Color(0, 0, 0, 0), PaperDeep, Edge, Ink, 17);
 		_primary = Outlined(Cinnabar, new Color(0.8f, 0.24f, 0.18f, 1f), Cinnabar, PaperLight, 17);
 		_field = new GUIStyle(GUI.skin.textField) { fontSize = Mathf.RoundToInt(18 * scale), alignment = TextAnchor.MiddleLeft };
+		ModFont.Apply(_field);
 		_field.normal.background = _field.hover.background = Framed(PaperLight, Edge);
 		// 点中时边框变朱砂红，看得出正在输入
 		_field.focused.background = Framed(new Color(1f, 0.99f, 0.96f, 1f), Cinnabar);
@@ -208,6 +213,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		_tag.normal.background = Texture(new Color(PaperLight.r, PaperLight.g, PaperLight.b, 0.92f));
 		_tag.padding = new RectOffset((int)S(5), (int)S(5), (int)S(1), (int)S(1));
 		_card = new GUIStyle(GUI.skin.box);
+		ModFont.Apply(_card);
 		_card.normal.background = Framed(Faded(PaperLight), new Color(Edge.r, Edge.g, Edge.b, 0.5f));
 		_card.border = new RectOffset(2, 2, 2, 2);
 		_card.padding = new RectOffset((int)S(10), (int)S(10), (int)S(8), (int)S(8));
@@ -233,7 +239,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		{
 			return;
 		}
-		if (!Mathf.Approximately(scale, _scale) || !Mathf.Approximately(PanelOpacity, _opacity))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode) || !Mathf.Approximately(PanelOpacity, _opacity))
 		{
 			BuildStyles(scale);
 		}

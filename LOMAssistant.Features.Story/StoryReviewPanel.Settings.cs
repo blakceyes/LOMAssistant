@@ -123,6 +123,7 @@ public partial class StoryReviewPanel
 			}),
 			("其他", new List<SettingRow>
 			{
+				new SettingRow { Element = ConfigManager.PanelFont, Name = "窗口字体", Choices = new[] { "游戏字体", "默认字体" } },
 				new SettingRow { Element = ConfigManager.GameSpeed, Name = "游戏倍速", Speeds = GameSpeed.Options },
 				Row(ConfigManager.PanelOpacity, "咖啡伴侣窗口不透明度", 0.3f, 1f),
 				Row(ConfigManager.EnableBackgroundRun, "后台继续运行"),

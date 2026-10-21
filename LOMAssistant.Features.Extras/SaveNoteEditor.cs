@@ -24,6 +24,7 @@ public class SaveNoteEditor : MonoBehaviour
 	private EventSystem _pausedEventSystem;
 
 	private float _scale = -1f;
+	private int _fontMode = -1;
 	private GUIStyle _label;
 	private GUIStyle _button;
 	private GUIStyle _field;
@@ -136,7 +137,7 @@ public class SaveNoteEditor : MonoBehaviour
 			return;
 		}
 		float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
-		if (!Mathf.Approximately(scale, _scale))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode))
 		{
 			BuildStyles(scale);
 		}
@@ -183,11 +184,16 @@ public class SaveNoteEditor : MonoBehaviour
 	private void BuildStyles(float scale)
 	{
 		_scale = scale;
+		_fontMode = ModFont.Mode;
 		int fontSize = Mathf.Max(12, (int)(24f * scale));
 		_label = new GUIStyle(GUI.skin.label) { fontSize = fontSize };
+		ModFont.Apply(_label);
 		_button = new GUIStyle(GUI.skin.button) { fontSize = fontSize, fixedHeight = 44f * scale };
+		ModFont.Apply(_button);
 		_field = new GUIStyle(GUI.skin.textField) { fontSize = fontSize, fixedHeight = 44f * scale };
+		ModFont.Apply(_field);
 		_window = new GUIStyle(GUI.skin.window) { fontSize = fontSize };
+		ModFont.Apply(_window);
 		_window.padding.top = (int)(34f * scale);
 		_window.padding.left = _window.padding.right = (int)(16f * scale);
 	}

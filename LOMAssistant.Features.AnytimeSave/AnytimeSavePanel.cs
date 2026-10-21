@@ -12,6 +12,7 @@ namespace LOMAssistant.Features.AnytimeSave;
 public partial class AnytimeSave
 {
 	private float _scale = -1f;
+	private int _fontMode = -1;
 	private GUIStyle _toast;
 
 	private void UpdateHotkeys()
@@ -60,10 +61,12 @@ public partial class AnytimeSave
 		}
 		float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
 		if (scale <= 0) return;
-		if (!Mathf.Approximately(scale, _scale))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode))
 		{
 			_scale = scale;
+			_fontMode = ModFont.Mode;
 			_toast = new GUIStyle(GUI.skin.box) { fontSize = Mathf.Max(12, (int)(22f * scale)), wordWrap = true, alignment = TextAnchor.MiddleLeft };
+			ModFont.Apply(_toast);
 			_toast.padding = new RectOffset((int)(12 * scale), (int)(12 * scale), (int)(8 * scale), (int)(8 * scale));
 		}
 		if (Replaying || Time.realtimeSinceStartup < messageUntil)

@@ -21,6 +21,7 @@ public class SkipReadToggle : MonoBehaviour
 	private bool _ours;
 	private GUIStyle _style;
 	private float _scale = -1f;
+	private int _fontMode = -1;
 
 	public static void Ensure(GameObject host)
 	{
@@ -70,10 +71,12 @@ public class SkipReadToggle : MonoBehaviour
 			return;
 		}
 		float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
-		if (!Mathf.Approximately(scale, _scale))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode))
 		{
 			_scale = scale;
+			_fontMode = ModFont.Mode;
 			_style = new GUIStyle(GUI.skin.box) { fontSize = Mathf.Max(12, (int)(20f * scale)), alignment = TextAnchor.MiddleCenter };
+			ModFont.Apply(_style);
 		}
 		var content = new GUIContent("快进已读对话中（" + InputGuard.KeyName(ConfigManager.SkipReadKey.Value) + " 停止）");
 		Vector2 size = _style.CalcSize(content) + new Vector2(24f * scale, 10f * scale);

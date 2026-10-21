@@ -120,6 +120,7 @@ public class BranchPanel : MonoBehaviour
 	private Rect _rect;
 	private bool _placed;
 	private float _scale = -1f;
+	private int _fontMode = -1;
 	private GUIStyle _window;
 	private GUIStyle _title;
 	private GUIStyle _line;
@@ -157,7 +158,7 @@ public class BranchPanel : MonoBehaviour
 			return;
 		}
 		float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
-		if (!Mathf.Approximately(scale, _scale) || !Mathf.Approximately(ConfigManager.PopupOpacity.Value, _opacity))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode) || !Mathf.Approximately(ConfigManager.PopupOpacity.Value, _opacity))
 		{
 			BuildStyles(scale);
 		}
@@ -223,6 +224,7 @@ public class BranchPanel : MonoBehaviour
 	private void BuildStyles(float scale)
 	{
 		_scale = scale;
+		_fontMode = ModFont.Mode;
 		int fontSize = Mathf.Max(11, (int)(19f * scale));
 		// 背景不透明度可在配置 PopupOpacity 里改；走的那一行的高亮跟着按比例变化，始终看得出来
 		_opacity = ConfigManager.PopupOpacity.Value;
@@ -233,13 +235,16 @@ public class BranchPanel : MonoBehaviour
 		_window.normal.background = _bg;
 		_window.padding = new RectOffset((int)(12f * scale), (int)(12f * scale), (int)(8f * scale), (int)(10f * scale));
 		_title = new GUIStyle(GUI.skin.label) { fontSize = fontSize, fontStyle = FontStyle.Bold, richText = true, wordWrap = true };
+		ModFont.Apply(_title);
 		_title.normal.textColor = new Color(0.95f, 0.92f, 0.85f);
 		_line = new GUIStyle(GUI.skin.label) { fontSize = fontSize, richText = true, wordWrap = true };
+		ModFont.Apply(_line);
 		_line.padding = new RectOffset((int)(14f * scale), 4, 2, 2);
 		_line.normal.textColor = new Color(0.85f, 0.82f, 0.76f);
 		_taken = new GUIStyle(_line);
 		_taken.normal.background = _takenBg;
 		_close = new GUIStyle(GUI.skin.button) { fontSize = fontSize };
+		ModFont.Apply(_close);
 	}
 
 	private static Texture2D Solid(Color color)

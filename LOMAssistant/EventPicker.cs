@@ -43,6 +43,7 @@ public class EventPicker : MonoBehaviour
 	}
 
 	private float _scale = -1f;
+	private int _fontMode = -1;
 	private GUIStyle _label, _title, _button, _highlighted, _effects, _window;
 	private Rect _windowRect;
 	private Vector2 _scroll;
@@ -207,14 +208,18 @@ public class EventPicker : MonoBehaviour
 	private void BuildStyles(float scale)
 	{
 		_scale = scale;
+		_fontMode = ModFont.Mode;
 		int fontSize = Mathf.Max(12, (int)(22f * scale));
 		_label = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = true };
+		ModFont.Apply(_label);
 		_effects = new GUIStyle(_label) { fontSize = Mathf.Max(11, (int)(18f * scale)) };
 		_effects.normal.textColor = new Color(0.8f, 0.8f, 0.8f);
 		_button = new GUIStyle(GUI.skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleLeft, wordWrap = true };
+		ModFont.Apply(_button);
 		_highlighted = new GUIStyle(_button) { fontStyle = FontStyle.Bold };
 		_highlighted.normal.textColor = _highlighted.hover.textColor = new Color(1f, 0.82f, 0.4f);
 		_window = new GUIStyle(GUI.skin.window) { fontSize = fontSize };
+		ModFont.Apply(_window);
 		_window.padding.top = (int)(8f * scale);
 		_title = new GUIStyle(_label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
 		float width = 640f * scale;
@@ -232,7 +237,7 @@ public class EventPicker : MonoBehaviour
 		{
 			return;
 		}
-		if (!Mathf.Approximately(scale, _scale))
+		if (ModFont.NeedsRebuild(scale, _scale, _fontMode))
 		{
 			BuildStyles(scale);
 		}
