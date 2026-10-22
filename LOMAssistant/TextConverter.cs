@@ -46,8 +46,8 @@ public static class TextConverter
 
 	public static string ToTraditional(string text) => Cached(_traditionalCache, text, "zh-TW", LCMAP_TRADITIONAL_CHINESE);
 
-	/// <summary>本 Mod 界面现在用的语言（见 DisplayLanguage）是韩语或日语：思源宋体（繁中版）缺这些字，界面改用系统字体。</summary>
-	public static bool NeedsSystemFont => DisplayLanguage is UiText.Korean or UiText.Japanese;
+	/// <summary>日语界面需使用日语补丁提供的字体；韩语字形由游戏字体支持。</summary>
+	public static bool NeedsSystemFont => DisplayLanguage == UiText.Japanese;
 
 	/// <summary>
 	/// 本 Mod 界面用的语言：ChineseSimplified / ChineseTraditional / Korean / Japanese。

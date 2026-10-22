@@ -8,7 +8,7 @@ internal static class ModFont
 	private static Font _gameFont;
 
 	/// <summary>实际用的字体：0 = 游戏的思源宋体，1 = 系统默认字体（微软雅黑）。
-	/// 界面是韩语、日语时思源宋体（繁中版）缺字，一律用系统默认字体（缺的字系统会补上）。</summary>
+	/// 日语界面使用系统字体；韩语界面遵循字体设置，默认使用游戏字体。</summary>
 	public static int Mode => TextConverter.NeedsSystemFont ? 1 : LOMAssistant.Config.ConfigManager.PanelFont.Value;
 
 	public static bool NeedsRebuild(float scale, float previousScale, int previousMode) =>
