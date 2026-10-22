@@ -122,6 +122,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.EnableCombatAssist, "决斗直接获胜按钮"),
 				Row(ConfigManager.EnableBattleWin, "团战直接获胜按钮"),
 				Row(ConfigManager.EnableFastDuelRounds, "决斗回合间不干等"),
+				Row(ConfigManager.EnableDuelActionForecast, "决斗敌方行动预测"),
 				Row(ConfigManager.EnableSkillColumns, "技能表全显示"),
 			}),
 			("存档", new List<SettingRow>

@@ -147,6 +147,8 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(DuelCheatPatch));
 			TryPatchAll(typeof(BattleCheatPatch));
 			TryPatchAll(typeof(DuelPacePatch));
+			DuelActionForecast.Ensure(base.gameObject);
+			TryPatchAll(typeof(DuelActionForecastPatch));
 			TryPatchAll(typeof(SkillColumnsPatch));
 			TryPatchAll(typeof(CombatStackTipPatch));
 			TryPatchAll(typeof(LOMAssistant.Features.Story.LegendExportButton));
