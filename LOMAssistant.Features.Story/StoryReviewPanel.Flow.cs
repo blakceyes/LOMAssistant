@@ -287,13 +287,13 @@ public partial class StoryReviewPanel
 			default:
 				if (step.Arm == 0)
 				{
-					return StoryScripts.Otherwise(step.Key, false);
+					return StoryScripts.Otherwise(step.Key, true);
 				}
 				// 「小梅好感 需>=35 → 当前40」只留「小梅好感>=35」
 				string text = RichText.Strip(DataHelper.SwitchBranchCondition(step.Key, step.Arm)).Trim();
 				if (text == "以上条件都不满足")
 				{
-					return StoryScripts.Otherwise(step.Key, false);
+					return StoryScripts.Otherwise(step.Key, true);
 				}
 				text = System.Text.RegularExpressions.Regex.Replace(text, @" → 当前[^ ]*", "").Replace(" 需", "").Trim();
 				return text.Length > 0 ? "如果 " + text : "条件不明";

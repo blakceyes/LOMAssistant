@@ -322,7 +322,8 @@ public static class DataHelper
 		}
 		string fieldValue2 = byKey.GetFieldValue<string>("_desc");
 		fieldValue2 = (fieldValue2.IsNullOrWhiteSpace() ? byKey.name : fieldValue2);
-		item = fieldValue + " - " + fieldValue2;
+		// Keep both complete names readable by the shared UI translation splitter.
+		item = fieldValue + " · " + fieldValue2;
 		string text = byKey.Position.ToString();
 		string periodText;
 		bool isInPeriod = GetMissionPeriod(byKey, out periodText);

@@ -198,6 +198,44 @@ public static class Tests
 		}
 	}
 
+	/// <summary>实际界面组合：任务编号、地点、选择、掷骰和否则分支。</summary>
+	public static void TestUiDisplaySentences()
+	{
+		foreach (string[] row in new[]
+		{
+			new[] { "Korean", "M7001_02 · 围攻唐门 强制发生", "M7001_02 · 당문 포위 공격 (강제 발생)" },
+			new[] { "Korean", "M12345 · 反间谍 - 限时", "M12345 · 반간첩 - 시간 제한" },
+			new[] { "Korean", "位置：无", "위치: 없음" },
+			new[] { "Korean", "位置：正心堂", "위치: 정심당" },
+			new[] { "Korean", "位置：校场", "위치: 연무장" },
+			new[] { "Korean", "位置：炼丹房", "위치: 연단방" },
+			new[] { "Korean", "位置：锻冶场", "위치: 대장간" },
+			new[] { "Korean", "选「못 본 척한다」", "「못 본 척한다」 선택" },
+			new[] { "Korean", "选「가서 살펴보자」（需 嘴力 需>=40）", "「가서 살펴보자」 선택 (필요: 구력 필요 >=40)" },
+			new[] { "Korean", "掷骰「떨어져 죽었다」（<75）", "주사위 「떨어져 죽었다」 (<75)" },
+			new[] { "Korean", "否则（不满足：贡献度>=0）", "그 외 (공헌도>=0 미충족)" },
+			new[] { "Korean", "在支线「猴儿酒」（任意时间）", "곁가지 이야기「후아주」(언제든지)에서" },
+			new[] { "Korean", "额外行动次数 1", "추가 행동 횟수 1" },
+			new[] { "Korean", "额外行动次数 2", "추가 행동 횟수 2" },
+			new[] { "Korean", "额外行动次数 3", "추가 행동 횟수 3" },
+			new[] { "Japanese", "M7001_02 · 围攻唐门 强制发生", "M7001_02 · 唐門包囲戦（強制発生）" },
+			new[] { "Japanese", "位置：炼丹房", "場所：錬丹房" },
+			new[] { "English", "位置：炼丹房", "Place: Alchemy room" },
+			new[] { "English", "掷骰「Keep this dialogue」（<75）", "Roll 「Keep this dialogue」 (<75)" },
+			new[] { "English", "M7001_02 - unknown_key", "M7001_02 - unknown_key" },
+			new[] { "Korean", "M7001_02 · 남궁심(南宮深)", "M7001_02 · 남궁심(南宮深)" },
+		})
+		{
+			string actual = LOMAssistant.UiText.Translate(row[1], row[0]);
+			Assert(actual == row[2], row[0] + ": " + row[1] + " => " + actual);
+		}
+		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+			foreach (string source in new[] { "M7001_02 - 围攻唐门 强制发生", "位置：正心堂", "选「原文」（需 >=40）" })
+				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": " + source);
+		// An exact quest title still wins over splitting at the same punctuation.
+		Assert(LOMAssistant.UiText.Translate("偷懒怪 - 大师兄", "Korean") == "게으름뱅이 - 대사형", "Exact quest title priority");
+	}
+
 	/// <summary>韩、日译文表：每行三列（简体、韩、日），简体原文不重复，译文的占位符和原文一样。</summary>
 	public static void TestUiTextRows()
 	{

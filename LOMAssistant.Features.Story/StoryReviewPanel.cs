@@ -325,8 +325,23 @@ public partial class StoryReviewPanel : MonoBehaviour
 		}
 	}
 
+	private string _displayLanguage;
+
+	private void RefreshDisplayLanguage()
+	{
+		string language = TextConverter.DisplayLanguage;
+		if (_displayLanguage == language) return;
+		_displayLanguage = language;
+		// Graph labels and collection summaries are translated before shortening/composition.
+		_flowCache.Clear();
+		_flow = null;
+		_route = null;
+		_texts.Clear();
+	}
+
 	private void DrawWindowContent(int id)
 	{
+		RefreshDisplayLanguage();
 		_tooltip = "";
 		float w = _windowRect.width, pad = S(18);
 		// 确认框开着时，点击、滚轮、按键先给确认框，剩下的吞掉，下面的界面不响应
@@ -684,7 +699,8 @@ public partial class StoryReviewPanel : MonoBehaviour
 
 	private static string Short(string text, int length)
 	{
-		text = RichText.Strip(text ?? "").Replace("\n", " ");
+		// A clipped source sentence can no longer match its translation template.
+		text = TextConverter.ForDisplay(RichText.Strip(text ?? "")).Replace("\n", " ");
 		return text.Length <= length ? text : text.Substring(0, length) + "…";
 	}
 
@@ -895,8 +911,9 @@ public partial class StoryReviewPanel : MonoBehaviour
 			{
 				parts.Add("决斗输了");
 			}
-			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.ToArray()) : "：走到这一段就会触发";
-			lines.Add(OnPaper(head + steps));
+			// Translate each complete sentence before joining its heading and route.
+			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.Select(TextConverter.ForDisplay).ToArray()) : TextConverter.ForDisplay("：走到这一段就会触发");
+			lines.Add(OnPaper(TextConverter.ForDisplay(head) + steps));
 		}
 		if (ending.Ways.Count > 4)
 		{
