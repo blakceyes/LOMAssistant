@@ -100,6 +100,104 @@ public static class Tests
 
 	// ---------------- 界面文字表 ----------------
 
+	/// <summary>韩语表要接到实际显示路径：官方术语、组合条件、编号和富文本都保留。</summary>
+	public static void TestKoreanUiTranslations()
+	{
+		var cases = new[]
+		{
+			new[] { "嘴力", "구력" },
+			new[] { "嘴攻", "구공" },
+			new[] { "备揍", "맞을 준비" },
+			new[] { "绝招", "절초" },
+			new[] { "银两", "은자" },
+			new[] { "心上人", "마음에 둔 사람" },
+			new[] { "嘴力 需>=40 → 当前35", "구력 필요 >=40 → 현재 35" },
+			new[] { "<b>嘴力 需>=40 → 当前35</b>", "<b>구력 필요 >=40 → 현재 35</b>" },
+			new[] { "心上人 需=郁竹", "마음에 둔 사람 필요 =욱죽" },
+			new[] { "好感 郁竹 · 好感 小梅", "호감도 욱죽 · 호감도 우소매" },
+			new[] { "旗标M81012 = 1", "플래그 M81012 = 1" },
+			new[] { "← 唐门会议", "← 당문회의" },
+			new[] { "→ 唐门会议", "→ 당문회의" },
+			new[] { "✓ 唐门会议", "✓ 당문회의" },
+			new[] { "남궁심(南宮深)", "남궁심(南宮深)" },
+			new[] { "강릉부(江陵府)", "강릉부(江陵府)" },
+		};
+		foreach (string[] row in cases)
+		{
+			string actual = LOMAssistant.UiText.Translate(row[0], LOMAssistant.UiText.Korean);
+			Assert(actual == row[1], row[0] + "：预期「" + row[1] + "」，实际「" + actual + "」");
+		}
+		foreach (string name in new[] { "UiConditionNames", "UiFlagNames" })
+		{
+			var seen = new HashSet<string>();
+			foreach (string[] row in (string[][])Static(Mod.GetType("LOMAssistant." + name), "Korean"))
+			{
+				Assert(row.Length == 2 && !string.IsNullOrWhiteSpace(row[1]), name + "：韩语表格式不对");
+				Assert(seen.Add(row[0]), name + "：原文重复「" + row[0] + "」");
+			}
+		}
+	}
+
+	/// <summary>比较条件与嵌套句式使用同一语言表，并保留符号、编号和富文本。</summary>
+	public static void TestUiTextComposition()
+	{
+		var aliases = new[]
+		{
+			"攻略小师妹 (攻略人數)", "贵重品_连环火箭",
+			"与飞石帮进入交战 (交戰門派)", "与崆峒派进入交战 (交戰門派_無飛石幫)",
+			"攻略小师妹 (攻略人數_排除龍湘)", "攻略小梅 (攻略人數_梅竹菊)",
+			"攻略小师妹 (攻略人數_三個高手_排除龍湘)", "条件_没有攻略龙湘",
+			"攻略上官萤 (攻略人數_排除小師妹)", "攻略小师妹 (攻略人數_排除梅竹菊)",
+			"攻略小师妹 (攻略人數_排除梅)", "天道 (六道總點數)", "条件_晚安且收留小梅"
+		};
+		foreach (string language in new[] { "Korean", "Japanese" })
+		{
+			var table = (string[][])Static(Mod.GetType("LOMAssistant.UiConditionNames"), language);
+			foreach (string alias in aliases)
+			{
+				string[] row = table.FirstOrDefault(r => r[0] == alias);
+				if (row == null) { Assert(language != "Korean", alias + "：缺少韩语条件名"); continue; }
+				foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
+				{
+					foreach (string space in new[] { "", " ", "\t" })
+					{
+						string source = alias + space + op + space + "-40";
+						string expected = row[1] + space + op + space + "-40";
+						Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
+						Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + ": rich text " + source);
+					}
+				}
+			}
+		}
+		foreach (string[] row in new[]
+		{
+			new[] { "Korean", "接到「接到「养成」」", "「「육성」(으)로 이어짐」(으)로 이어짐" },
+			new[] { "English", "接到「接到「养成」」", "Leads to 「Leads to 「Training」」" },
+			new[] { "Korean", "看剧情图：第2层", "스토리 흐름도 보기: 2단계" },
+			new[] { "Japanese", "看剧情图：第2层", "ストーリー図を見る：第2層" },
+			new[] { "English", "看剧情图：第2层", "Story map: Layer 2" },
+			new[] { "Korean", "<b>看剧情图：第2层</b>", "<b>스토리 흐름도 보기: 2단계</b>" },
+			new[] { "Korean", "看剧情图：남궁심(南宮深)", "스토리 흐름도 보기: 남궁심(南宮深)" },
+			new[] { "English", "看剧情图：M12345", "Story map: M12345" },
+			new[] { "Japanese", "看剧情图：unknown {9}", "ストーリー図を見る：unknown {9}" }
+		})
+		{
+			Assert(LOMAssistant.UiText.Translate(row[1], row[0]) == row[2], row[0] + ": " + row[1]);
+		}
+		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+		{
+			foreach (string source in aliases.Select(a => a + " ≥ 40").Concat(new[] { "接到「接到「养成」」" }))
+				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": passthrough " + source);
+		}
+		string deep = string.Concat(Enumerable.Repeat("看剧情图：", 50)) + "M12345";
+		foreach (string language in new[] { "Korean", "Japanese", "English" })
+		{
+			string result = LOMAssistant.UiText.Translate(deep, language);
+			Assert(result.EndsWith("M12345") && result.Contains("看剧情图："), language + ": bounded nesting must preserve the remainder");
+			Assert(LOMAssistant.UiText.Translate(deep, language) == result, language + ": cached result changed");
+		}
+	}
+
 	/// <summary>韩、日译文表：每行三列（简体、韩、日），简体原文不重复，译文的占位符和原文一样。</summary>
 	public static void TestUiTextRows()
 	{
