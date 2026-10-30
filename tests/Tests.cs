@@ -198,6 +198,35 @@ public static class Tests
 		}
 	}
 
+	/// <summary>流程图省略「需」并转成简体后，仍识别完整条件名和右侧变量。</summary>
+	public static void TestCompactConditionTranslations()
+	{
+		foreach (string language in new[] { "Korean", "Japanese" })
+		{
+			var table = (string[][])Static(Mod.GetType("LOMAssistant.UiConditionNames"), language);
+			foreach (string key in new[] { "攻略小师妹 (攻略人數_排除龍湘)", "攻略小师妹 (攻略人數_三個高手_排除龍湘)" })
+			{
+				string[] row = table.Single(r => r[0] == key);
+				string simplified = LOMAssistant.TextConverter.ToSimplified(key);
+				Assert(LOMAssistant.UiText.Translate(simplified + ">=40", language) == row[1] + ">=40", language + ": simplified condition alias");
+			}
+			foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
+			{
+				foreach (string right in new[] { "好感度_三师兄", "随机值_0_40" })
+				{
+					string leftText = table.Single(r => r[0] == "好感度_二师兄")[1];
+					string rightText = table.Single(r => r[0] == right)[1];
+					string source = "好感度_二师兄" + op + right;
+					string expected = leftText + op + rightText;
+					Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
+					Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + ": comparison tags");
+				}
+			}
+		}
+		Assert(LOMAssistant.UiText.Translate("心上人!=自己", "Korean") == "마음에 둔 사람!=자신", "Compact named right operand");
+		Assert(LOMAssistant.UiText.Translate("그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Korean") == "그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Clipped translated condition stays intact");
+	}
+
 	/// <summary>实际界面组合：任务编号、地点、选择、掷骰和否则分支。</summary>
 	public static void TestUiDisplaySentences()
 	{
@@ -234,6 +263,35 @@ public static class Tests
 				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": " + source);
 		// An exact quest title still wins over splitting at the same punctuation.
 		Assert(LOMAssistant.UiText.Translate("偷懒怪 - 大师兄", "Korean") == "게으름뱅이 - 대사형", "Exact quest title priority");
+	}
+
+	/// <summary>流程图按原始路径合并：相同显示文案不能让不同分岔共用标识。</summary>
+	public static void TestFlowPathIdentity()
+	{
+		var method = Mod.GetType("LOMAssistant.Features.Story.StoryReviewPanel").GetMethod("FlowPathKey", BindingFlags.Static | BindingFlags.NonPublic);
+		var stepType = Mod.GetType("LOMAssistant.Features.Story.StoryStep");
+		object Step(string kind, string key, int arm)
+		{
+			object step = Activator.CreateInstance(stepType);
+			stepType.GetField("Kind").SetValue(step, kind);
+			stepType.GetField("Key").SetValue(step, key);
+			stepType.GetField("Arm").SetValue(step, arm);
+			return step;
+		}
+		string Key(params object[] steps)
+		{
+			Array path = Array.CreateInstance(stepType, steps.Length);
+			for (int i = 0; i < steps.Length; i++) path.SetValue(steps[i], i);
+			return (string)method.Invoke(null, new object[] { path });
+		}
+		object a = Step("条件", "checkpoint_1", 1), b = Step("条件", "checkpoint_1", 2);
+		Assert(Key(a) == Key(Step("条件", "checkpoint_1", 1)), "同一分岔的标识应一致");
+		Assert(Key(a) != Key(b), "不同支不能合并");
+		Assert(Key(a, b) != Key(b, a), "分岔顺序不能丢失");
+		Assert(Key(a) != Key(Step("选项", "checkpoint_1", 1)), "不同分岔类型不能合并");
+		Assert(Key(a) != Key(Step("条件", "checkpoint_2", 1)), "不同检查点不能合并");
+		Assert(Key(Step("a:b", "c", 1)) != Key(Step("a", "b:c", 1)), "字段分隔符不能造成标识冲突");
+		Assert(Key(Step("a", "b:1|c:d", 2)) != Key(Step("a", "b", 1), Step("c", "d", 2)), "路径分隔符不能造成标识冲突");
 	}
 
 	/// <summary>韩、日译文表：每行三列（简体、韩、日），简体原文不重复，译文的占位符和原文一样。</summary>

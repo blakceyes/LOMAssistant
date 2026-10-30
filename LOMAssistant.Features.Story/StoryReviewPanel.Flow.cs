@@ -32,6 +32,8 @@ public partial class StoryReviewPanel
 	private sealed class FlowWay
 	{
 		public FlowBox To;
+		/// <summary>原始分岔路径及去处类型，用于合并同一路径，不受译文或截短影响。</summary>
+		public string Key = "";
 		/// <summary>行里显示的短说明；Full 是完整的条件和选项（悬停时看）。</summary>
 		public string Short = "";
 		public readonly List<string> Full = new List<string>();
@@ -287,13 +289,13 @@ public partial class StoryReviewPanel
 			default:
 				if (step.Arm == 0)
 				{
-					return StoryScripts.Otherwise(step.Key, true);
+					return StoryScripts.Otherwise(step.Key, false);
 				}
 				// 「小梅好感 需>=35 → 当前40」只留「小梅好感>=35」
 				string text = RichText.Strip(DataHelper.SwitchBranchCondition(step.Key, step.Arm)).Trim();
 				if (text == "以上条件都不满足")
 				{
-					return StoryScripts.Otherwise(step.Key, true);
+					return StoryScripts.Otherwise(step.Key, false);
 				}
 				text = System.Text.RegularExpressions.Regex.Replace(text, @" → 当前[^ ]*", "").Replace(" 需", "").Trim();
 				return text.Length > 0 ? "如果 " + text : "条件不明";
@@ -369,9 +371,10 @@ public partial class StoryReviewPanel
 			return box;
 		}
 
-		FlowBox Terminal(FlowBox from, string text, bool ending)
+		FlowBox Terminal(FlowBox from, string sourceKey, string text, bool ending)
 		{
-			string key = from.Id + "|" + text;
+			// 显示标题可能随语言变化或截短成相同文字，不能用来判断是否为同一去处。
+			string key = from.Id + "|" + sourceKey;
 			if (!terminals.TryGetValue(key, out FlowBox box))
 			{
 				box = new FlowBox { Id = key, Title = text, Terminal = true, Ending = ending, Layer = from.Layer + 1 };
@@ -433,16 +436,16 @@ public partial class StoryReviewPanel
 					if (exit.ToTitle)
 					{
 						string name = EndingName(from.Last, exit);
-						to = Terminal(from, name.Length > 0 ? "结局：" + Short(name, 9) : "结局", true);
+						to = Terminal(from, "ending:" + name, name.Length > 0 ? "结局：" + Short(name, 9) : "结局", true);
 					}
 					else if (exit.MainMission.Length > 0)
 					{
 						StoryMission next = StoryAtlas.Find(exit.MainMission);
-						to = Terminal(from, "主线 → " + (next != null ? Short(next.Title, 10) : exit.MainMission), false);
+						to = Terminal(from, "main:" + exit.MainMission, "主线 → " + (next != null ? Short(next.Title, 10) : exit.MainMission), false);
 					}
 					else if (exit.ToMap)
 					{
-						to = Terminal(from, "回到地图", false);
+						to = Terminal(from, "map", "回到地图", false);
 					}
 					else if (exit.Target.Length == 0)
 					{
@@ -451,7 +454,7 @@ public partial class StoryReviewPanel
 					else if (otherStarts.Contains(exit.Target))
 					{
 						StoryMission other = StoryAtlas.Missions.FirstOrDefault(m => string.Equals(m.StartScript, exit.Target, StringComparison.OrdinalIgnoreCase));
-						to = Terminal(from, "接到 " + (other != null ? Short(other.Title, 10) : exit.Target), false);
+						to = Terminal(from, "script:" + exit.Target, "接到 " + (other != null ? Short(other.Title, 10) : exit.Target), false);
 					}
 					else
 					{
@@ -473,7 +476,7 @@ public partial class StoryReviewPanel
 					{
 						link.Labels.Add(label);
 					}
-					AddWay(from, to, ShortLabel(exit), label, exit, link.Back);
+					AddWay(from, to, FlowPathKey(exit.Path) + (exit.AfterScene ? "/after-scene" : "/exit"), ShortLabel(exit), label, exit, link.Back);
 				}
 				// 选了还留在本段、之后合回来的选项：也列成一行，写上它改什么
 				var leaving = new HashSet<string>(from.Last.Exits.SelectMany(x => x.Path).Where(st => st.Kind == StoryStep.Option).Select(st => st.Key));
@@ -496,7 +499,7 @@ public partial class StoryReviewPanel
 						continue;
 					}
 					StoryEnding ending = StoryAtlas.Endings.FirstOrDefault(e => e.Death && e.Id == deadId);
-					FlowBox to = Terminal(from, "死亡：" + Short(ending != null ? ending.Title : deadId, 9), true);
+					FlowBox to = Terminal(from, "death:" + deadId, "死亡：" + Short(ending != null ? ending.Title : deadId, 9), true);
 					FlowLink link = graph.Links.Find(l => l.From == from && l.To == to);
 					if (link == null)
 					{
@@ -508,13 +511,13 @@ public partial class StoryReviewPanel
 					{
 						link.Labels.Add(label);
 					}
-					AddWay(from, to, (path.Count > 0 ? StepShort(path[path.Count - 1]) + " · " : "") + "决斗输了", label, null, false);
+					AddWay(from, to, FlowPathKey(path) + "/duel-loss", (path.Count > 0 ? StepShort(path[path.Count - 1]) + " · " : "") + "决斗输了", label, null, false);
 				}
 				// 死亡（生死簿）不是「回到标题」，单独画出来
 				foreach (var (path, death, id) in from.Last.Endings.Where(e => e.Death))
 				{
 					StoryEnding ending = StoryAtlas.Endings.FirstOrDefault(e => e.Death && e.Id == id);
-					FlowBox to = Terminal(from, "死亡：" + Short(ending != null ? ending.Title : id, 9), true);
+					FlowBox to = Terminal(from, "death:" + id, "死亡：" + Short(ending != null ? ending.Title : id, 9), true);
 					FlowLink link = graph.Links.Find(l => l.From == from && l.To == to);
 					if (link == null)
 					{
@@ -526,18 +529,18 @@ public partial class StoryReviewPanel
 					{
 						link.Labels.Add(label);
 					}
-					AddWay(from, to, path.Count > 0 ? StepShort(path[path.Count - 1]) : "接着", label, null, false);
+					AddWay(from, to, FlowPathKey(path) + "/death", path.Count > 0 ? StepShort(path[path.Count - 1]) : "接着", label, null, false);
 				}
 			}
 		}
 
-		// 同一个去处、同一句短说明的合成一行
-		void AddWay(FlowBox from, FlowBox to, string shortText, string full, StoryExit exit, bool back)
+		// 同一个去处、同一条原始分岔路径合成一行，译文只负责显示。
+		void AddWay(FlowBox from, FlowBox to, string key, string shortText, string full, StoryExit exit, bool back)
 		{
-			FlowWay way = from.Ways.Find(w => w.To == to && w.Short == shortText);
+			FlowWay way = from.Ways.Find(w => w.To == to && w.Key == key);
 			if (way == null)
 			{
-				way = new FlowWay { To = to, Short = shortText, Back = back };
+				way = new FlowWay { To = to, Key = key, Short = shortText, Back = back };
 				from.Ways.Add(way);
 			}
 			if (full.Length > 0 && !way.Full.Contains(full))
@@ -623,6 +626,10 @@ public partial class StoryReviewPanel
 
 	/// <summary>行里的短说明：这条路上每一步分岔，选项写选项文字，掷骰写范围，条件只写个大概（完整的悬停看）。</summary>
 	private static string ShortLabel(StoryExit exit) => exit.Path.Count == 0 ? (exit.AfterScene ? "战斗后" : "接着") : string.Join(" · ", exit.Path.Select(StepShort).ToArray());
+
+	// 与 StoryScripts.IsPrefix 使用相同的分岔身份；转义分隔符，避免不同 key 拼成相同路径。
+	private static string FlowPathKey(IEnumerable<StoryStep> path) => string.Join("|", path.Select(step =>
+		Uri.EscapeDataString(step.Kind) + ":" + Uri.EscapeDataString(step.Key) + ":" + step.Arm).ToArray());
 
 	private static string StepShort(StoryStep step)
 	{

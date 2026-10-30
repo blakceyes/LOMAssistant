@@ -129,7 +129,7 @@ public static class UiText
 	}
 
 	// 条件里的变量名（「嘴力 需>=40」「目前时间 需<=…」「好感度_三师兄 需>好感度_二师兄」）：只在条件格式里换，
-	// 名字后面跟「 需」或比较符，或跟在「需=」「需>=」等后面。要比旗标名先换：「攻略小师妹 (攻略人數)」「天道 (六道總點數)」
+	// 名字后面跟「 需」或比较符，或跟在比较符后面（流程图会省略「需」）。要比旗标名先换：「攻略小师妹 (攻略人數)」「天道 (六道總點數)」
 	// 这类名字里的「攻略小师妹」「天道」也是旗标名，先被换掉就对不上了
 	private static (Regex, MatchEvaluator) ConditionNames(string[][] table)
 	{
@@ -138,9 +138,15 @@ public static class UiText
 		{
 			map[row[0]] = row[1];
 		}
+		// 剧情条件会转成简体；复用原词条，显式键优先于转换得到的别名。
+		foreach (string[] row in table)
+		{
+			string simplified = TextConverter.ToSimplified(row[0]);
+			if (!map.ContainsKey(simplified)) map[simplified] = row[1];
+		}
 		string names = string.Join("|", map.Keys.OrderByDescending(n => n.Length).Select(Regex.Escape).ToArray());
 		const string comparison = "(?:>=|<=|!=|=|>|<|≥|≤|≠)";
-		var regex = new Regex("(?<=需" + comparison + ")(?:" + names + ")(?=$|\\s|<)|(?<=^|\\s)(?:" + names + ")(?= 需|\\s*" + comparison + ")");
+		var regex = new Regex("(?<=" + comparison + ")(?:" + names + ")(?=$|\\s|<)|(?<=^|\\s)(?:" + names + ")(?= 需|\\s*" + comparison + ")");
 		return (regex, m => map[m.Value]);
 	}
 

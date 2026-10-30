@@ -524,7 +524,8 @@ public static class StoryScripts
 		}
 		if (!full)
 		{
-			arms = arms.Select(a => a.Length > 18 ? a.Substring(0, 18) + "…" : a).ToList();
+			// 先按界面语言翻译完整条件，再沿用每条 18 字的简略显示，避免截断后无法匹配译文。
+			arms = arms.Select(TextConverter.ForDisplay).Select(a => a.Length > 18 ? a.Substring(0, 18) + "…" : a).ToList();
 		}
 		return arms.Count == 1 ? "否则（不满足：" + arms[0] + "）" : "否则（以下都不满足：" + string.Join("；", arms.ToArray()) + "）";
 	}

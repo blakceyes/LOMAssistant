@@ -697,6 +697,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		return (text ?? "").Replace("#A3B86C", "#2F6B3A").Replace("#CD594A", "#A3302A").Replace("#BCA136", "#7A5A10");
 	}
 
+	/// <summary>界面用的短文字：先翻译再截短。返回值只供显示，不作为节点或分支的标识。</summary>
 	private static string Short(string text, int length)
 	{
 		// A clipped source sentence can no longer match its translation template.
