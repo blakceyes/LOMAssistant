@@ -100,6 +100,335 @@ public static class Tests
 
 	// ---------------- 界面文字表 ----------------
 
+	/// <summary>韩语表要接到实际显示路径：官方术语、组合条件、编号和富文本都保留。</summary>
+	public static void TestKoreanUiTranslations()
+	{
+		var cases = new[]
+		{
+			new[] { "嘴力", "구력" },
+			new[] { "嘴攻", "구공" },
+			new[] { "备揍", "맞을 준비" },
+			new[] { "绝招", "절초" },
+			new[] { "银两", "은자" },
+			new[] { "心上人", "마음에 둔 사람" },
+			new[] { "嘴力 需>=40 → 当前35", "구력 필요 >=40 → 현재 35" },
+			new[] { "<b>嘴力 需>=40 → 当前35</b>", "<b>구력 필요 >=40 → 현재 35</b>" },
+			new[] { "心上人 需=郁竹", "마음에 둔 사람 필요 =욱죽" },
+			new[] { "好感 郁竹 · 好感 小梅", "호감도 욱죽 · 호감도 우소매" },
+			new[] { "旗标M81012 = 1", "플래그 M81012 = 1" },
+			new[] { "← 唐门会议", "← 당문회의" },
+			new[] { "→ 唐门会议", "→ 당문회의" },
+			new[] { "✓ 唐门会议", "✓ 당문회의" },
+			new[] { "남궁심(南宮深)", "남궁심(南宮深)" },
+			new[] { "강릉부(江陵府)", "강릉부(江陵府)" },
+		};
+		foreach (string[] row in cases)
+		{
+			string actual = LOMAssistant.UiText.Translate(row[0], LOMAssistant.UiText.Korean);
+			Assert(actual == row[1], row[0] + "：预期「" + row[1] + "」，实际「" + actual + "」");
+		}
+	}
+
+	/// <summary>名称表共用原文、韩语、日语、英语四列；未提供的译文用 null，不重复原文键。</summary>
+	public static void TestUiNameTables()
+	{
+		foreach (string name in new[] { "UiConditionNames", "UiFlagNames", "UiQuestNames", "UiEventNames" })
+		{
+			var seen = new HashSet<string>();
+			foreach (string[] row in (string[][])Static(Mod.GetType("LOMAssistant." + name), "Table"))
+			{
+				Assert(row.Length == 4 && !string.IsNullOrWhiteSpace(row[0]), name + "：名称表格式不对");
+				Assert(seen.Add(row[0]), name + "：原文重复「" + row[0] + "」");
+				foreach (string text in row.Skip(1).Where(text => text != null))
+				{
+					Assert(!string.IsNullOrWhiteSpace(text) && Holes(text) == Holes(row[0]), name + "：译文或占位符不对「" + row[0] + "」");
+				}
+			}
+		}
+	}
+
+	// 旧测试仍按「原文、译文」对照，但数据来自共用表的当前语言列。
+	private static string[][] NameTable(string name, string language)
+	{
+		int column = Array.IndexOf(new[] { "", "Korean", "Japanese", "English" }, language);
+		return ((string[][])Static(Mod.GetType("LOMAssistant." + name), "Table"))
+			.Where(row => column > 0 && column < row.Length && row[column] != null)
+			.Select(row => new[] { row[0], row[column] }).ToArray();
+	}
+
+	/// <summary>补上任一语言列就能显示；切换语言不串用译文，缺译仍返回原来的回退结果。</summary>
+	public static void TestUiNameColumns()
+	{
+		string[] languages = { "Korean", "Japanese", "English" };
+		string[] fields = { "_korean", "_japanese", "_english" };
+		var flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+		string[] names = { "UiConditionNames", "UiFlagNames", "UiQuestNames", "UiEventNames" };
+		var tables = names.Select(name => (string[][])Static(Mod.GetType("LOMAssistant." + name), "Table")).ToArray();
+		var savedRows = tables.Select(table => table[table.Length - 1]).ToArray();
+		var caches = fields.Select(field => typeof(LOMAssistant.UiText).GetField(field, flags)).ToArray();
+		var savedCaches = caches.Select(field => field.GetValue(null)).ToArray();
+		Type events = Mod.GetType("LOMAssistant.UiEventNames");
+		FieldInfo eventCache = events.GetField("_names", flags);
+		object savedEventCache = eventCache.GetValue(null);
+		FieldInfo languageSetting = Mod.GetType("LOMAssistant.Config.ConfigManager").GetField("UiLanguage", flags);
+		object savedSetting = languageSetting.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(languageSetting.FieldType);
+		FieldInfo value = languageSetting.FieldType.GetField("m_value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		string[] keys = { "测试条件", "测试旗标", "测试任务", "測試事件" };
+		try
+		{
+			string[] fallbacks = keys.Take(3).Select(key => LOMAssistant.UiText.Translate(key, "English")).ToArray();
+			languageSetting.SetValue(null, setting);
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1] = new[] { keys[i], "검사" + i, "テスト" + i, "Test" + i };
+			}
+			foreach (FieldInfo cache in caches)
+			{
+				cache.SetValue(null, null);
+			}
+			eventCache.SetValue(null, null);
+			foreach (int i in new[] { 0, 1, 2, 1, 0 })
+			{
+				string Expected(int table) => tables[table][tables[table].Length - 1][i + 1];
+				Assert(LOMAssistant.UiText.Translate(keys[0] + ">=40", languages[i]) == Expected(0) + ">=40", languages[i] + "：条件列未接入");
+				Assert(LOMAssistant.UiText.Translate(keys[1] + " (TEST_FLAG) 需=1", languages[i]).StartsWith(Expected(1) + " (TEST_FLAG)"), languages[i] + "：旗标列未接入");
+				Assert(LOMAssistant.UiText.Translate(keys[2], languages[i]) == Expected(2), languages[i] + "：任务列未接入");
+				value.SetValue(setting, i + 3);
+				Assert((string)events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == Expected(3), languages[i] + "：事件列或语言切换不对");
+			}
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1][3] = null;
+			}
+			caches[2].SetValue(null, null);
+			for (int i = 0; i < fallbacks.Length; i++)
+			{
+				Assert(LOMAssistant.UiText.Translate(keys[i], "English") == fallbacks[i], "英语缺译时应沿用原来的回退：" + keys[i]);
+			}
+			value.SetValue(setting, 5);
+			Assert(events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == null, "事件缺译应返回 null");
+			Assert((string)events.GetMethod("Display").Invoke(null, new object[] { "P_大失敗_002" }) == "P_Critical failure_002", "结果事件应保留前缀与编号");
+			foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+			{
+				Assert(LOMAssistant.UiText.Translate(keys[0] + ">=40", language) == keys[0] + ">=40", language + "：原文应保持不变");
+			}
+			value.SetValue(setting, 2);
+			Assert(events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == null, "中文事件应沿用原来的显示路径");
+		}
+		finally
+		{
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1] = savedRows[i];
+			}
+			for (int i = 0; i < caches.Length; i++)
+			{
+				caches[i].SetValue(null, savedCaches[i]);
+			}
+			eventCache.SetValue(null, savedEventCache);
+			languageSetting.SetValue(null, savedSetting);
+		}
+	}
+
+	/// <summary>比较条件与嵌套句式使用同一语言表，并保留符号、编号和富文本。</summary>
+	public static void TestUiTextComposition()
+	{
+		var aliases = new[]
+		{
+			"攻略小师妹 (攻略人數)", "贵重品_连环火箭",
+			"与飞石帮进入交战 (交戰門派)", "与崆峒派进入交战 (交戰門派_無飛石幫)",
+			"攻略小师妹 (攻略人數_排除龍湘)", "攻略小梅 (攻略人數_梅竹菊)",
+			"攻略小师妹 (攻略人數_三個高手_排除龍湘)", "条件_没有攻略龙湘",
+			"攻略上官萤 (攻略人數_排除小師妹)", "攻略小师妹 (攻略人數_排除梅竹菊)",
+			"攻略小师妹 (攻略人數_排除梅)", "天道 (六道總點數)", "条件_晚安且收留小梅"
+		};
+		foreach (string language in new[] { "Korean", "Japanese" })
+		{
+			var table = NameTable("UiConditionNames", language);
+			foreach (string alias in aliases)
+			{
+				string[] row = table.FirstOrDefault(r => r[0] == alias);
+				if (row == null)
+				{
+					Assert(language != "Korean", alias + "：缺少韩语条件名");
+					continue;
+				}
+				foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
+				{
+					foreach (string space in new[] { "", " ", "\t" })
+					{
+						string source = alias + space + op + space + "-40";
+						string expected = row[1] + space + op + space + "-40";
+						Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
+						Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + "：富文本 " + source);
+					}
+				}
+			}
+		}
+		foreach (string[] row in new[]
+		{
+			new[] { "Korean", "接到「接到「养成」」", "「「육성」(으)로 이어짐」(으)로 이어짐" },
+			new[] { "English", "接到「接到「养成」」", "Leads to 「Leads to 「Training」」" },
+			new[] { "Korean", "看剧情图：第2层", "스토리 흐름도 보기: 2단계" },
+			new[] { "Japanese", "看剧情图：第2层", "ストーリー図を見る：第2層" },
+			new[] { "English", "看剧情图：第2层", "Story map: Layer 2" },
+			new[] { "Korean", "<b>看剧情图：第2层</b>", "<b>스토리 흐름도 보기: 2단계</b>" },
+			new[] { "Korean", "看剧情图：남궁심(南宮深)", "스토리 흐름도 보기: 남궁심(南宮深)" },
+			new[] { "English", "看剧情图：M12345", "Story map: M12345" },
+			new[] { "Japanese", "看剧情图：unknown {9}", "ストーリー図を見る：unknown {9}" }
+		})
+		{
+			Assert(LOMAssistant.UiText.Translate(row[1], row[0]) == row[2], row[0] + ": " + row[1]);
+		}
+		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+		{
+			foreach (string source in aliases.Select(a => a + " ≥ 40").Concat(new[] { "接到「接到「养成」」" }))
+			{
+				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + "：应原样返回 " + source);
+			}
+		}
+		string deep = string.Concat(Enumerable.Repeat("看剧情图：", 50)) + "M12345";
+		foreach (string language in new[] { "Korean", "Japanese", "English" })
+		{
+			string result = LOMAssistant.UiText.Translate(deep, language);
+			Assert(result.EndsWith("M12345") && result.Contains("看剧情图："), language + "：达到嵌套上限后应保留剩余文字");
+			Assert(LOMAssistant.UiText.Translate(deep, language) == result, language + "：缓存结果发生变化");
+		}
+	}
+
+	/// <summary>详情先翻译各个去处再拼接；原来的 Describe 仍返回原文，不改变非界面调用。</summary>
+	public static void TestStoryDescriptionFormatting()
+	{
+		Type scripts = Mod.GetType("LOMAssistant.Features.Story.StoryScripts");
+		Type exitType = Mod.GetType("LOMAssistant.Features.Story.StoryExit");
+		var raw = scripts.GetMethod("Describe", new[] { exitType });
+		var formatted = scripts.GetMethod("Describe", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { exitType, typeof(Func<string, string>) }, null);
+		object exit = Activator.CreateInstance(exitType);
+		exitType.GetField("ToMap").SetValue(exit, true);
+		exitType.GetField("MainMission").SetValue(exit, "TEST_MAIN_123");
+		const string original = "回到地图，主线推进到「TEST_MAIN_123」";
+		Assert((string)raw.Invoke(null, new[] { exit }) == original, "原文说明的顺序、标点和编号不能改变");
+		foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
+		{
+			Func<string, string> format = text => LOMAssistant.UiText.Translate(text, language);
+			string actual = (string)formatted.Invoke(null, new object[] { exit, format });
+			Assert(actual.Contains("TEST_MAIN_123"), language + "：主线编号应保留");
+			if (language == "Korean")
+			{
+				Assert(actual == "지도로 돌아감，주요 이야기 「TEST_MAIN_123」(으)로 진행", "返回地图和推进主线都应翻译");
+			}
+			if (language.StartsWith("Chinese"))
+			{
+				Assert(actual == original, language + "：原文拼接不变");
+			}
+			Assert((string)raw.Invoke(null, new[] { exit }) == original, language + "：显示转换不能影响原文重载");
+		}
+	}
+
+	/// <summary>流程图省略「需」并转成简体后，仍识别完整条件名和右侧变量。</summary>
+	public static void TestCompactConditionTranslations()
+	{
+		foreach (string language in new[] { "Korean", "Japanese" })
+		{
+			var table = NameTable("UiConditionNames", language);
+			foreach (string key in new[] { "攻略小师妹 (攻略人數_排除龍湘)", "攻略小师妹 (攻略人數_三個高手_排除龍湘)" })
+			{
+				string[] row = table.Single(r => r[0] == key);
+				string simplified = LOMAssistant.TextConverter.ToSimplified(key);
+				Assert(LOMAssistant.UiText.Translate(simplified + ">=40", language) == row[1] + ">=40", language + "：简体条件名别名");
+			}
+			foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
+			{
+				foreach (string right in new[] { "好感度_三师兄", "随机值_0_40" })
+				{
+					string leftText = table.Single(r => r[0] == "好感度_二师兄")[1];
+					string rightText = table.Single(r => r[0] == right)[1];
+					string source = "好感度_二师兄" + op + right;
+					string expected = leftText + op + rightText;
+					Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
+					Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + "：比较条件的富文本标签");
+				}
+			}
+		}
+		Assert(LOMAssistant.UiText.Translate("心上人!=自己", "Korean") == "마음에 둔 사람!=자신", "简略条件中的右侧名称");
+		Assert(LOMAssistant.UiText.Translate("그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Korean") == "그 외 (공략 중인 인원 수(소사매·상… 미충족)", "已翻译的缩略条件应保持原样");
+	}
+
+	/// <summary>实际界面组合：任务编号、地点、选择、掷骰和否则分支。</summary>
+	public static void TestUiDisplaySentences()
+	{
+		foreach (string[] row in new[]
+		{
+			new[] { "Korean", "M7001_02 · 围攻唐门 强制发生", "M7001_02 · 당문 포위 공격 (강제 발생)" },
+			new[] { "Korean", "M12345 · 反间谍 - 限时", "M12345 · 방첩 - 시간 제한" },
+			new[] { "Korean", "位置：无", "위치: 없음" },
+			new[] { "Korean", "位置：正心堂", "위치: 정심당" },
+			new[] { "Korean", "位置：校场", "위치: 연무장" },
+			new[] { "Korean", "位置：炼丹房", "위치: 연단방" },
+			new[] { "Korean", "位置：锻冶场", "위치: 대장간" },
+			new[] { "Korean", "选「못 본 척한다」", "「못 본 척한다」 선택" },
+			new[] { "Korean", "选「가서 살펴보자」（需 嘴力 需>=40）", "「가서 살펴보자」 선택 (필요: 구력 필요 >=40)" },
+			new[] { "Korean", "掷骰「떨어져 죽었다」（<75）", "주사위 「떨어져 죽었다」 (<75)" },
+			new[] { "Korean", "否则（不满足：贡献度>=0）", "그 외 (공헌도>=0 미충족)" },
+			new[] { "Korean", "在支线「猴儿酒」（任意时间）", "곁가지 이야기「후아주」(언제든지)에서" },
+			new[] { "Korean", "额外行动次数 1", "추가 행동 횟수 1" },
+			new[] { "Korean", "额外行动次数 2", "추가 행동 횟수 2" },
+			new[] { "Korean", "额外行动次数 3", "추가 행동 횟수 3" },
+			new[] { "Japanese", "M7001_02 · 围攻唐门 强制发生", "M7001_02 · 唐門包囲戦（強制発生）" },
+			new[] { "Japanese", "位置：炼丹房", "場所：錬丹房" },
+			new[] { "English", "位置：炼丹房", "Place: Alchemy room" },
+			new[] { "English", "掷骰「Keep this dialogue」（<75）", "Roll 「Keep this dialogue」 (<75)" },
+			new[] { "English", "M7001_02 - unknown_key", "M7001_02 - unknown_key" },
+			new[] { "Korean", "M7001_02 · 남궁심(南宮深)", "M7001_02 · 남궁심(南宮深)" },
+		})
+		{
+			string actual = LOMAssistant.UiText.Translate(row[1], row[0]);
+			Assert(actual == row[2], row[0] + ": " + row[1] + " => " + actual);
+		}
+		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+		{
+			foreach (string source in new[] { "M7001_02 - 围攻唐门 强制发生", "位置：正心堂", "选「原文」（需 >=40）" })
+			{
+				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": " + source);
+			}
+		}
+		// 任务名本身带分隔符时，仍应优先匹配完整名称。
+		Assert(LOMAssistant.UiText.Translate("偷懒怪 - 大师兄", "Korean") == "게으름뱅이 - 대사형", "完整任务名应优先匹配");
+	}
+
+	/// <summary>流程图按原始路径合并：相同显示文案不能让不同分岔共用标识。</summary>
+	public static void TestFlowPathIdentity()
+	{
+		var method = Mod.GetType("LOMAssistant.Features.Story.StoryReviewPanel").GetMethod("FlowPathKey", BindingFlags.Static | BindingFlags.NonPublic);
+		var stepType = Mod.GetType("LOMAssistant.Features.Story.StoryStep");
+		object Step(string kind, string key, int arm)
+		{
+			object step = Activator.CreateInstance(stepType);
+			stepType.GetField("Kind").SetValue(step, kind);
+			stepType.GetField("Key").SetValue(step, key);
+			stepType.GetField("Arm").SetValue(step, arm);
+			return step;
+		}
+		string Key(params object[] steps)
+		{
+			Array path = Array.CreateInstance(stepType, steps.Length);
+			for (int i = 0; i < steps.Length; i++)
+			{
+				path.SetValue(steps[i], i);
+			}
+			return (string)method.Invoke(null, new object[] { path });
+		}
+		object a = Step("条件", "checkpoint_1", 1), b = Step("条件", "checkpoint_1", 2);
+		Assert(Key(a) == Key(Step("条件", "checkpoint_1", 1)), "同一分岔的标识应一致");
+		Assert(Key(a) != Key(b), "不同支不能合并");
+		Assert(Key(a, b) != Key(b, a), "分岔顺序不能丢失");
+		Assert(Key(a) != Key(Step("选项", "checkpoint_1", 1)), "不同分岔类型不能合并");
+		Assert(Key(a) != Key(Step("条件", "checkpoint_2", 1)), "不同检查点不能合并");
+		Assert(Key(Step("a:b", "c", 1)) != Key(Step("a", "b:c", 1)), "字段分隔符不能造成标识冲突");
+		Assert(Key(Step("a", "b:1|c:d", 2)) != Key(Step("a", "b", 1), Step("c", "d", 2)), "路径分隔符不能造成标识冲突");
+	}
+
 	/// <summary>韩、日译文表：每行三列（简体、韩、日），简体原文不重复，译文的占位符和原文一样。</summary>
 	public static void TestUiTextRows()
 	{

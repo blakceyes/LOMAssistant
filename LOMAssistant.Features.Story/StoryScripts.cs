@@ -481,20 +481,26 @@ public static class StoryScripts
 	/// <summary>一步分岔写成一句话，条件带当前值。</summary>
 	public static string Describe(StoryStep step)
 	{
+		return Describe(step, text => text);
+	}
+
+	// 界面按句式和参数分别翻译，再拼成说明；原来的重载仍返回原文。
+	internal static string Describe(StoryStep step, Func<string, string> format)
+	{
 		switch (step.Kind)
 		{
 			case StoryStep.Option:
 				string need = step.Requirement.Length > 0 ? DataHelper.ParseConditionCheckpoint(step.Requirement) : "";
-				return "选「" + OptionText(step.Key) + "」" + (need.Length > 0 ? "（需 " + TextConverter.ToSimplified(need) + "）" : "");
+				return string.Format(format(need.Length > 0 ? "选「{0}」（需 {1}）" : "选「{0}」"), format(OptionText(step.Key)), format(TextConverter.ToSimplified(need)));
 			case StoryStep.Dice:
-				return "掷骰「" + OptionText(step.Key) + "」" + (step.Range.Length > 0 ? "（" + step.Range + "）" : "");
+				return string.Format(format(step.Range.Length > 0 ? "掷骰「{0}」（{1}）" : "掷骰「{0}」"), format(OptionText(step.Key)), step.Range);
 			default:
 				if (step.Arm == 0)
 				{
-					return Otherwise(step.Key, true);
+					return format(Otherwise(step.Key, true));
 				}
 				string arm = DataHelper.SwitchBranchCondition(step.Key, step.Arm);
-				return arm.Length > 0 ? "若 " + TextConverter.ToSimplified(arm) : "条件不明";
+				return arm.Length > 0 ? string.Format(format("若 {0}"), format(TextConverter.ToSimplified(arm))) : format("条件不明");
 		}
 	}
 
@@ -524,7 +530,8 @@ public static class StoryScripts
 		}
 		if (!full)
 		{
-			arms = arms.Select(a => a.Length > 18 ? a.Substring(0, 18) + "…" : a).ToList();
+			// 先按界面语言翻译完整条件，再沿用每条 18 字的简略显示，避免截断后无法匹配译文。
+			arms = arms.Select(TextConverter.ForDisplay).Select(a => a.Length > 18 ? a.Substring(0, 18) + "…" : a).ToList();
 		}
 		return arms.Count == 1 ? "否则（不满足：" + arms[0] + "）" : "否则（以下都不满足：" + string.Join("；", arms.ToArray()) + "）";
 	}
@@ -540,14 +547,20 @@ public static class StoryScripts
 	/// <summary>去处写成一句话：走过哪些分岔，接到哪段剧情、推进到哪个主线任务。</summary>
 	public static string Describe(StoryExit exit)
 	{
-		var parts = exit.Path.Select(Describe).ToList();
-		string where = exit.ToTitle ? "回到标题（结局）" : exit.ToMap ? "回到地图" : exit.Target.Length > 0 ? (exit.AfterScene ? "战斗之后接到「" : "接到「") + SegmentName(exit.Target) + "」" : "";
+		return Describe(exit, text => text);
+	}
+
+	// 先处理每一步和每个去处，避免「若… → 选…」整段被当成一条条件。
+	internal static string Describe(StoryExit exit, Func<string, string> format)
+	{
+		var parts = exit.Path.Select(step => Describe(step, format)).ToList();
+		string where = exit.ToTitle ? format("回到标题（结局）") : exit.ToMap ? format("回到地图") : exit.Target.Length > 0 ? string.Format(format(exit.AfterScene ? "战斗之后接到「{0}」" : "接到「{0}」"), format(SegmentName(exit.Target))) : "";
 		if (exit.MainMission.Length > 0)
 		{
 			StoryMission mission = StoryAtlas.Find(exit.MainMission);
-			where = (where.Length > 0 ? where + "，" : "") + "主线推进到「" + (mission != null ? mission.Title : exit.MainMission) + "」";
+			where = (where.Length > 0 ? where + "，" : "") + string.Format(format("主线推进到「{0}」"), format(mission != null ? mission.Title : exit.MainMission));
 		}
-		parts.Add(where.Length > 0 ? where : "（这一段里接着往下）");
+		parts.Add(where.Length > 0 ? where : format("（这一段里接着往下）"));
 		return string.Join(" → ", parts.ToArray());
 	}
 }

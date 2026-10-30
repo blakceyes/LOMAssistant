@@ -18,11 +18,11 @@ public static class AiKnowledge
 {
 	private const int PageChars = 6000;
 
-	/// <summary>给模型看的工具说明（名字、用途、参数），OpenAI 和 Claude 的格式由 LlmClient 各自包装。</summary>
+	/// <summary>给模型看的工具说明（名字、用途、参数）；说明用中文，游戏文本随当前语言。OpenAI 和 Claude 的格式由 LlmClient 各自包装。</summary>
 	public static readonly (string Name, string Description, JObject Parameters)[] Tools =
 	{
 		("search", "按关键词搜游戏剧情：任务名、任务说明和摘要、对白原文、结局和成就、可结缘的女主角。不知道编号时先用它。返回匹配的任务编号、剧本编号、结局编号和片段。",
-			Schema(("query", "string", "关键词，如人名、任务名、地点、一句对白里的词。用简体中文"))),
+			Schema(("query", "string", "关键词，如人名、任务名、地点、一句对白里的词。优先用游戏资料中已有的写法：对白和本地化名称随游戏当前语言，内部备注可能是中文。不要因工具说明是中文就把韩语等原有关键词改成中文"))),
 		("quest", "看一个任务的详情：所属任务组、主线还是支线、发生时间、地点、触发条件、从哪些剧本接进来、之后接到哪些任务、包含的剧本和每个剧本的剧情摘要，以及玩家读过多少（全部周目）、这一局走过没有。",
 			Schema(("key", "string", "任务编号，如 S2700_01（从 search 结果里拿）"))),
 		("script", "看一个剧本的详情：游戏的剧情记录、选项、每条分岔路径上的数值和旗标变化、接到哪个剧本、结局和死亡、决斗；以及按分岔分开的对白原文。每个选项、去处标出玩家读过多少（全部周目）和这一局走过没有。对白多时分页。",
@@ -75,7 +75,7 @@ public static class AiKnowledge
 							["required"] = new JArray("name", "value"),
 						},
 					},
-					["reason"] = new JObject { ["type"] = "string", ["description"] = "一句话说明为什么改，会显示在卡片上" },
+					["reason"] = new JObject { ["type"] = "string", ["description"] = "一句话说明为什么改，会显示在卡片上；用当前界面语言，沿用已提供的人物名和术语，不照抄内部中文字段或标记" },
 				},
 				["required"] = new JArray("changes"),
 			}),
@@ -172,7 +172,7 @@ public static class AiKnowledge
 
 	private static readonly Regex Current = new Regex(@" ?→ ?当前[^ ，；、。)）\n]*");
 
-	/// <summary>去掉富文本标记、条件里的当前值，转成简体。</summary>
+	/// <summary>去掉富文本标记、条件里的当前值；已有汉字转简体，不把游戏提供的韩语等文字译成中文。</summary>
 	internal static string Clean(string text) => AiAnalysis.ExplainTime(Current.Replace(TextConverter.ToSimplified(RichText.Strip(text ?? "")), "").Trim());
 
 	private static string PathText(List<StoryStep> path) => path.Count == 0 ? "（开头，不经分岔）" : string.Join(" → ", path.Select(s => Clean(StoryScripts.Describe(s))).ToArray());

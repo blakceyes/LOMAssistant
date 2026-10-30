@@ -325,8 +325,27 @@ public partial class StoryReviewPanel : MonoBehaviour
 		}
 	}
 
+	private string _displayLanguage;
+
+	private void RefreshDisplayLanguage()
+	{
+		string language = TextConverter.DisplayLanguage;
+		if (_displayLanguage == language)
+		{
+			return;
+		}
+		_displayLanguage = language;
+		// 图里的文字和收集说明已在截短、拼接前翻译；切换语言后要重新生成。
+		_flowCache.Clear();
+		_flow = null;
+		_route = null;
+		_now = null;
+		_texts.Clear();
+	}
+
 	private void DrawWindowContent(int id)
 	{
+		RefreshDisplayLanguage();
 		_tooltip = "";
 		float w = _windowRect.width, pad = S(18);
 		// 确认框开着时，点击、滚轮、按键先给确认框，剩下的吞掉，下面的界面不响应
@@ -682,9 +701,11 @@ public partial class StoryReviewPanel : MonoBehaviour
 		return (text ?? "").Replace("#A3B86C", "#2F6B3A").Replace("#CD594A", "#A3302A").Replace("#BCA136", "#7A5A10");
 	}
 
+	/// <summary>界面用的短文字：先翻译再截短。返回值只供显示，不作为节点或分支的标识。</summary>
 	private static string Short(string text, int length)
 	{
-		text = RichText.Strip(text ?? "").Replace("\n", " ");
+		// 原文截短后可能对不上翻译句式，所以先翻译完整文字。
+		text = TextConverter.ForDisplay(RichText.Strip(text ?? "")).Replace("\n", " ");
 		return text.Length <= length ? text : text.Substring(0, length) + "…";
 	}
 
@@ -777,7 +798,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 
 	private readonly Dictionary<string, string> _reading = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-	/// <summary>一个去处读过没有：看接下去那个剧本的对白（全部周目）。</summary>
+	/// <summary>一个去处读过没有：看接下去那个剧本的对白（全部周目）。缓存原文，返回时按界面语言翻译。</summary>
 	private string ReadMark(StoryExit exit)
 	{
 		if (exit.Target.Length == 0)
@@ -786,13 +807,13 @@ public partial class StoryReviewPanel : MonoBehaviour
 		}
 		if (_reading.TryGetValue(exit.Target, out string mark))
 		{
-			return mark;
+			return TextConverter.ForDisplay(mark);
 		}
 		StoryScript next = StoryScripts.Get(exit.Target);
 		int? read = next != null ? StoryScripts.ReadPercent(next.Lines) : null;
 		mark = read == null || read == 100 ? "" : read == 0 ? "〔未读〕" : "〔读过 " + read + "%〕";
 		_reading[exit.Target] = mark;
-		return mark;
+		return TextConverter.ForDisplay(mark);
 	}
 
 	/// <summary>路线图、剧情图、结局都要先把全部剧本读一遍。</summary>
@@ -890,13 +911,14 @@ public partial class StoryReviewPanel : MonoBehaviour
 		foreach (StoryEndingWay way in ending.Ways.Take(4))
 		{
 			string head = way.Mission != null ? $"在{(way.Mission.Main ? "主线" : "支线")}「{way.Mission.Title}」（{way.Mission.When}）" : "在剧本 " + way.Script;
-			var parts = way.Path.Select(StoryScripts.Describe).ToList();
+			var parts = way.Path.Select(step => StoryScripts.Describe(step, TextConverter.ForDisplay)).ToList();
 			if (way.LostDuel)
 			{
 				parts.Add("决斗输了");
 			}
-			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.ToArray()) : "：走到这一段就会触发";
-			lines.Add(OnPaper(head + steps));
+			// 标题和每一步说明先各自翻译，再拼起来，免得完整句式对不上。
+			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.Select(TextConverter.ForDisplay).ToArray()) : TextConverter.ForDisplay("：走到这一段就会触发");
+			lines.Add(OnPaper(TextConverter.ForDisplay(head) + steps));
 		}
 		if (ending.Ways.Count > 4)
 		{
@@ -1098,7 +1120,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			{
 				OpenFlow(m);
 			}
-			Hover(GUILayoutUtility.GetLastRect(), "看剧情图：" + m.Title + (m.When.Length > 0 ? "（" + m.When + "）" : ""));
+			Hover(GUILayoutUtility.GetLastRect(), "看剧情图：" + TextConverter.ForDisplay(m.Title) + (m.When.Length > 0 ? "（" + TextConverter.ForDisplay(m.When) + "）" : ""));
 		}
 		GUILayout.FlexibleSpace();
 		GUILayout.EndHorizontal();

@@ -253,10 +253,12 @@ public partial class StoryReviewPanel
 		GUIStyle muted = Middle(_muted);
 		// 能锁的行在加减按钮前面多一个锁：附加值那一栏（如「(+5)」）让出位置，后面的按钮和别的行对齐
 		float nameWidth = S(120), extraWidth = row.LockStat != null ? S(80) - S(36) - _button.margin.left : S(80);
+		string displayName = TextConverter.ForDisplay(row.Name);
+		string fittedName = Fit(displayName, line, nameWidth);
 		// 旗标、物品的名字能点，点了看它在哪些剧情里用到（标题后面有提示）
 		if (row.Uses != null)
 		{
-			if (GUILayout.Button(Fit(row.Name, line, nameWidth), line, GUILayout.Width(nameWidth), Ctl()))
+			if (GUILayout.Button(fittedName, line, GUILayout.Width(nameWidth), Ctl()))
 			{
 				_usageRow = row;
 				_usageScroll = Vector2.zero;
@@ -264,7 +266,7 @@ public partial class StoryReviewPanel
 		}
 		else
 		{
-			GUILayout.Label(Fit(row.Name, line, nameWidth), line, GUILayout.Width(nameWidth), Ctl());
+			GUILayout.Label(fittedName, line, GUILayout.Width(nameWidth), Ctl());
 		}
 		Rect nameRect = GUILayoutUtility.GetLastRect();
 		int value = row.Get();
@@ -278,7 +280,7 @@ public partial class StoryReviewPanel
 		}
 		Rect extraRect = GUILayoutUtility.GetLastRect();
 		string full = row.Name + (row.Note.Length > 0 ? "\n" + row.Note : "") + (row.Uses == null ? "" : row.Id.StartsWith("rel:") ? "\n点名字看在哪些剧情里判定" : "\n点名字看在哪些剧情里改动、判定");
-		if (full != row.Name || Fit(row.Name, line, nameWidth) != row.Name)
+		if (full != row.Name || fittedName != displayName)
 		{
 			Hover(nameRect, full);
 			Hover(extraRect, full);
@@ -532,7 +534,7 @@ public partial class StoryReviewPanel
 		GUILayout.Label(where, _label);
 		// 各段用全角空格隔开，界面翻译时一段一段换（「改」「设成 1」「分支判定」、条件原文）
 		string what = use.Kind + (use.Detail.Length > 0 ? "　" + use.Detail : "");
-		var steps = use.Path.Select(StoryScripts.Describe).ToList();
+		var steps = use.Path.Select(step => StoryScripts.Describe(step, TextConverter.ForDisplay)).ToList();
 		GUILayout.Label(RichText.Strip(what) + (steps.Count > 0 ? "　" + string.Join(" → ", steps.ToArray()) : ""), _muted);
 		GUILayout.EndVertical();
 		GUI.enabled = use.Mission != null;
@@ -913,9 +915,10 @@ public partial class StoryReviewPanel
 		return one;
 	}
 
-	/// <summary>放不下就截短加「…」。</summary>
+	/// <summary>按当前界面语言显示，放不下就截短加「…」；判断是否截短时应与完整译文比较。</summary>
 	private static string Fit(string text, GUIStyle style, float width)
 	{
+		text = TextConverter.ForDisplay(text);
 		if (string.IsNullOrEmpty(text) || style.CalcSize(new GUIContent(text)).x <= width)
 		{
 			return text ?? "";

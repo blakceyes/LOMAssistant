@@ -4,128 +4,128 @@ using System.Text.RegularExpressions;
 namespace LOMAssistant;
 
 /// <summary>
-/// 随机事件名的韩语。事件名是游戏事件数据里开发者写的备注（游戏自己不显示，只有中文繁体），
+/// 随机事件名的界面译文。事件名是游戏事件数据里开发者写的备注（游戏自己不显示，只有中文繁体），
 /// 韩语译文由玩家在 issue #27 提供，人名、门派按游戏韩语版的译名。「P_成功_001」这类只有结果和编号的名字不在表里，
 /// 由 Display 按规则换（韩语、日语、英语都换）。游戏新增事件后要补上。
 /// </summary>
 internal static class UiEventNames
 {
-	// 中文繁体（游戏里的原文）、韩语
+	// 中文繁体（游戏里的原文）、韩语、日语、英语；缺少译文填 null。
 	public static readonly string[][] Table =
 	{
-		new[] { "不滿", "불만" },
-		new[] { "丹霞子帶操", "단하자의 훈련 지도" },
-		new[] { "保養工具", "도구 손질" },
-		new[] { "修繕唐門", "당문 보수" },
-		new[] { "修繕山道dead End", "산길 보수: 막다른 길" },
-		new[] { "修繕崆峒山道", "공동산 산길 보수" },
-		new[] { "修葺地牢", "지하 감옥 수리" },
-		new[] { "修葺飛天殿", "비천전 수리" },
-		new[] { "假趙活 請客", "가짜 조활의 한턱내기" },
-		new[] { "和小梅跑步", "우소매와 함께 달리기" },
-		new[] { "嘗試逃獄", "탈옥 시도" },
-		new[] { "大師兄的機關甲衣", "대사형의 기관 갑옷" },
-		new[] { "官兵護航", "관군의 호송" },
-		new[] { "小師妹出嫁後消滅", "소사매가 시집간 뒤 사라짐" },
-		new[] { "小梅", "우소매" },
-		new[] { "小梅亂入", "우소매의 난입" },
-		new[] { "小梅偷窺", "우소매의 엿보기" },
-		new[] { "小梅問安", "우소매의 안부 인사" },
-		new[] { "小梅問安2", "우소매의 안부 인사 2" },
-		new[] { "小梅奏你", "우소매의 연주" },
-		new[] { "小梅的菜1", "우소매의 요리 1" },
-		new[] { "小梅的菜2", "우소매의 요리 2" },
-		new[] { "小梅的菜3", "우소매의 요리 3" },
-		new[] { "小梅練功", "우소매의 무공 수련" },
-		new[] { "小梅翹課", "우소매의 수업 땡땡이" },
-		new[] { "小竹", "욱죽" },
-		new[] { "小竹 一起挑柴", "욱죽과 함께 땔감 나르기" },
-		new[] { "小竹 修繕棧道", "욱죽의 잔도 수리" },
-		new[] { "小竹 有一口井", "욱죽과 우물 하나" },
-		new[] { "小竹一起刷地", "욱죽과 함께 바닥 청소" },
-		new[] { "小竹與飛石幫1", "욱죽과 비석방 1" },
-		new[] { "小竹與飛石幫2", "욱죽과 비석방 2" },
-		new[] { "小竹與飛石幫3", "욱죽과 비석방 3" },
-		new[] { "廚具", "조리 도구" },
-		new[] { "我有帶秘笈", "비급을 가져왔다" },
-		new[] { "戰鬥陀螺殺人事件", "배틀 팽이 살인 사건" },
-		new[] { "打坐調息", "좌선하며 운기조식" },
-		new[] { "打魚", "물고기 잡기" },
-		new[] { "掌門米糊糊", "장문인의 쌀죽" },
-		new[] { "排隊的龍湘", "줄 서 있는 용상" },
-		new[] { "教小竹練功", "욱죽에게 무공 가르치기" },
-		new[] { "有偷油婆", "바퀴벌레 등장" },
-		new[] { "欺負人", "다른 사람 괴롭히기" },
-		new[] { "活動筋骨", "몸 풀기" },
-		new[] { "滿", "만족" },
-		new[] { "烤魚", "생선 굽기" },
-		new[] { "無敵號與一團廢紙", "무적호와 종이 뭉치" },
-		new[] { "牙控車殺人事件", "아공차 살인 사건" },
-		new[] { "獵具", "사냥 도구" },
-		new[] { "登崖眺望", "절벽에 올라 경치 바라보기" },
-		new[] { "眉山探險隊", "미산 탐험대" },
-		new[] { "磨針", "바늘 갈기" },
-		new[] { "福韞 化緣", "복온의 탁발" },
-		new[] { "福韞 揍你", "복온이 때림" },
-		new[] { "福韞 講法1", "복온의 설법 1" },
-		new[] { "福韞 講法2", "복온의 설법 2" },
-		new[] { "福韞 講法3", "복온의 설법 3" },
-		new[] { "精美的簪子", "아름다운 비녀" },
-		new[] { "糾紛1", "분쟁 1" },
-		new[] { "糾紛2", "분쟁 2" },
-		new[] { "聊天（瑞笙在場限定", "대화 (서생이 있을 때만)" },
-		new[] { "聊天（瑞笙在場限定2", "대화 (서생이 있을 때만) 2" },
-		new[] { "自暴自棄", "자포자기" },
-		new[] { "苦命葉雲舟", "고생하는 엽운주" },
-		new[] { "茶具", "다구" },
-		new[] { "葉雲舟 木劍", "엽운주: 목검" },
-		new[] { "葉雲舟 葉家劍法", "엽운주: 엽가검법" },
-		new[] { "葉雲舟採藥", "엽운주의 약초 채집" },
-		new[] { "被小竹無視", "욱죽에게 무시당함" },
-		new[] { "被小竹趕出門", "욱죽에게 문전박대당함" },
-		new[] { "補屋頂", "지붕 보수" },
-		new[] { "補屋頂失敗", "지붕 보수 실패" },
-		new[] { "解無塵帶操", "해무진의 훈련 지도" },
-		new[] { "超團結", "강한 단결" },
-		new[] { "趙活磨喝樂", "조활의 마갈락" },
-		new[] { "農具", "농기구" },
-		new[] { "遭遇了火炎山劍閣", "화염산 검각과 조우" },
-		new[] { "遭遇全真派", "전진파와 조우" },
-		new[] { "遭遇地獄道鬼卒攔路", "지옥도 귀졸의 길막" },
-		new[] { "遭遇峨嵋派", "아미파와 조우" },
-		new[] { "遭遇崆峒派", "공동파와 조우" },
-		new[] { "遭遇嵩山派", "숭산파와 조우" },
-		new[] { "遭遇畜生道乞丐攔路", "축생도 거지의 길막" },
-		new[] { "遭遇青城派", "청성파와 조우" },
-		new[] { "遭遇餓鬼道海賊攔路", "아귀도 해적의 길막" },
-		new[] { "遭遇點蒼派", "점창파와 조우" },
-		new[] { "雲裳彈琴", "엽운상의 거문고 연주" },
-		new[] { "飛天弟子找碴", "비천문 제자의 시비" },
-		new[] { "香具", "향 도구" },
-		new[] { "馬富貴 大宋閒漢", "마부귀: 송나라 한량" },
-		new[] { "馬富貴 弄蛇大成功", "마부귀: 뱀 부리기 대성공" },
-		new[] { "馬富貴 弄蛇失敗", "마부귀: 뱀 부리기 실패" },
-		new[] { "馬富貴 弄蛇成功", "마부귀: 뱀 부리기 성공" },
-		new[] { "馬富貴 挖礦人", "광부 마부귀" },
-		new[] { "馬富貴 獵人", "마부귀의 사냥" },
-		new[] { "馬富貴 獵人失敗", "마부귀의 사냥 실패" },
-		new[] { "馬富貴 胸口碎大石", "마부귀: 가슴 위 바위 깨기" },
-		new[] { "馬富貴 買飲料", "마부귀: 음료 구매" },
-		new[] { "馬富貴 釣魚", "마부귀의 낚시" },
-		new[] { "龍之反省", "용의 반성" },
-		new[] { "龍湘出來迎接你", "용상이 마중 나옴" },
-		new[] { "龍湘吹簫", "용상의 퉁소 연주" },
-		new[] { "龍湘吹簫小師妹崇拜", "용상의 퉁소 연주를 동경하는 소사매" },
-		new[] { "龍湘挑戰1", "용상의 도전 1" },
-		new[] { "龍湘挑戰2", "용상의 도전 2" },
-		new[] { "龍湘服務生1", "점원 용상 1" },
-		new[] { "龍湘服務生2", "점원 용상 2" },
-		new[] { "龍湘服務生3", "점원 용상 3" },
-		new[] { "龍湘的挑戰", "용상의 도전" },
-		new[] { "龍湘與福韞", "용상과 복온" },
+		new[] { "不滿", "불만", null, null },
+		new[] { "丹霞子帶操", "단하자의 훈련 지도", null, null },
+		new[] { "保養工具", "도구 손질", null, null },
+		new[] { "修繕唐門", "당문 보수", null, null },
+		new[] { "修繕山道dead End", "산길 보수 중 사망", null, null },
+		new[] { "修繕崆峒山道", "공동산 산길 보수", null, null },
+		new[] { "修葺地牢", "지하 감옥 수리", null, null },
+		new[] { "修葺飛天殿", "비천전 수리", null, null },
+		new[] { "假趙活 請客", "가짜 조활의 한턱내기", null, null },
+		new[] { "和小梅跑步", "우소매와 함께 달리기", null, null },
+		new[] { "嘗試逃獄", "탈옥 시도", null, null },
+		new[] { "大師兄的機關甲衣", "대사형의 기관 갑옷", null, null },
+		new[] { "官兵護航", "관군의 호송", null, null },
+		new[] { "小師妹出嫁後消滅", "소사매가 시집간 뒤 사라짐", null, null },
+		new[] { "小梅", "우소매", null, "Xiao Mei" },
+		new[] { "小梅亂入", "우소매의 난입", null, null },
+		new[] { "小梅偷窺", "우소매의 엿보기", null, null },
+		new[] { "小梅問安", "우소매의 안부 인사", null, null },
+		new[] { "小梅問安2", "우소매의 안부 인사 2", null, null },
+		new[] { "小梅奏你", "우소매의 인간 악기 연주", null, null },
+		new[] { "小梅的菜1", "우소매의 요리 1", null, null },
+		new[] { "小梅的菜2", "우소매의 요리 2", null, null },
+		new[] { "小梅的菜3", "우소매의 요리 3", null, null },
+		new[] { "小梅練功", "우소매의 무공 수련", null, null },
+		new[] { "小梅翹課", "우소매의 수업 땡땡이", null, null },
+		new[] { "小竹", "욱죽", null, "Xiao Zhu" },
+		new[] { "小竹 一起挑柴", "욱죽과 함께 땔감 나르기", null, null },
+		new[] { "小竹 修繕棧道", "욱죽의 잔도 수리", null, null },
+		new[] { "小竹 有一口井", "욱죽과 우물 하나", "小竹 「井戸がひとつある」", null },
+		new[] { "小竹一起刷地", "욱죽과 함께 바닥 청소", "小竹と一緒に床磨き", null },
+		new[] { "小竹與飛石幫1", "욱죽과 비석방 1", null, null },
+		new[] { "小竹與飛石幫2", "욱죽과 비석방 2", null, null },
+		new[] { "小竹與飛石幫3", "욱죽과 비석방 3", null, null },
+		new[] { "廚具", "조리 도구", null, null },
+		new[] { "我有帶秘笈", "비급을 가져왔다", null, null },
+		new[] { "戰鬥陀螺殺人事件", "배틀 팽이 살인 사건", null, null },
+		new[] { "打坐調息", "좌선하며 운기조식", null, null },
+		new[] { "打魚", "물고기 잡기", null, null },
+		new[] { "掌門米糊糊", "장문인의 쌀죽", null, null },
+		new[] { "排隊的龍湘", "줄 서 있는 용상", null, null },
+		new[] { "教小竹練功", "욱죽에게 무공 가르치기", null, null },
+		new[] { "有偷油婆", "바퀴벌레 등장", null, null },
+		new[] { "欺負人", "다른 사람 괴롭히기", null, null },
+		new[] { "活動筋骨", "몸 풀기", null, null },
+		new[] { "滿", "만족", null, null },
+		new[] { "烤魚", "생선 굽기", null, null },
+		new[] { "無敵號與一團廢紙", "무적호와 종이 뭉치", null, null },
+		new[] { "牙控車殺人事件", "이로 조종하는 사륜차 살인 사건", null, null },
+		new[] { "獵具", "사냥 도구", null, null },
+		new[] { "登崖眺望", "절벽에 올라 경치 바라보기", null, null },
+		new[] { "眉山探險隊", "미산 탐험대", null, null },
+		new[] { "磨針", "바늘 갈기", null, null },
+		new[] { "福韞 化緣", "복온의 탁발", null, null },
+		new[] { "福韞 揍你", "복온이 때림", null, null },
+		new[] { "福韞 講法1", "복온의 설법 1", null, null },
+		new[] { "福韞 講法2", "복온의 설법 2", null, null },
+		new[] { "福韞 講法3", "복온의 설법 3", null, null },
+		new[] { "精美的簪子", "아름다운 비녀", null, null },
+		new[] { "糾紛1", "분쟁 1", null, null },
+		new[] { "糾紛2", "분쟁 2", null, null },
+		new[] { "聊天（瑞笙在場限定", "대화 (서생이 있을 때만)", null, null },
+		new[] { "聊天（瑞笙在場限定2", "대화 (서생이 있을 때만) 2", null, null },
+		new[] { "自暴自棄", "자포자기", null, null },
+		new[] { "苦命葉雲舟", "고생하는 엽운주", null, null },
+		new[] { "茶具", "다구", null, null },
+		new[] { "葉雲舟 木劍", "엽운주: 목검", "葉雲舟 木剣", null },
+		new[] { "葉雲舟 葉家劍法", "엽운주: 엽가검법", null, null },
+		new[] { "葉雲舟採藥", "엽운주의 약초 채집", null, null },
+		new[] { "被小竹無視", "욱죽에게 무시당함", null, null },
+		new[] { "被小竹趕出門", "욱죽에게 문전박대당함", null, null },
+		new[] { "補屋頂", "지붕 보수", null, null },
+		new[] { "補屋頂失敗", "지붕 보수 실패", null, null },
+		new[] { "解無塵帶操", "해무진의 훈련 지도", null, null },
+		new[] { "超團結", "강한 단결", null, null },
+		new[] { "趙活磨喝樂", "조활 마갈락", null, null },
+		new[] { "農具", "농기구", null, null },
+		new[] { "遭遇了火炎山劍閣", "화염산 검각과 조우", null, null },
+		new[] { "遭遇全真派", "전진파와 조우", null, null },
+		new[] { "遭遇地獄道鬼卒攔路", "지옥도 귀졸의 길막", null, null },
+		new[] { "遭遇峨嵋派", "아미파와 조우", null, null },
+		new[] { "遭遇崆峒派", "공동파와 조우", null, null },
+		new[] { "遭遇嵩山派", "숭산파와 조우", null, null },
+		new[] { "遭遇畜生道乞丐攔路", "축생도 거지의 길막", null, null },
+		new[] { "遭遇青城派", "청성파와 조우", null, null },
+		new[] { "遭遇餓鬼道海賊攔路", "아귀도 해적의 길막", null, null },
+		new[] { "遭遇點蒼派", "점창파와 조우", null, null },
+		new[] { "雲裳彈琴", "엽운상의 거문고 연주", null, null },
+		new[] { "飛天弟子找碴", "비천문 제자의 시비", null, null },
+		new[] { "香具", "향 도구", null, null },
+		new[] { "馬富貴 大宋閒漢", "마부귀: 송나라 한량", null, null },
+		new[] { "馬富貴 弄蛇大成功", "마부귀: 뱀 부리기 대성공", null, null },
+		new[] { "馬富貴 弄蛇失敗", "마부귀: 뱀 부리기 실패", null, null },
+		new[] { "馬富貴 弄蛇成功", "마부귀: 뱀 부리기 성공", null, null },
+		new[] { "馬富貴 挖礦人", "광부 마부귀", null, null },
+		new[] { "馬富貴 獵人", "마부귀의 사냥", null, null },
+		new[] { "馬富貴 獵人失敗", "마부귀의 사냥 실패", null, null },
+		new[] { "馬富貴 胸口碎大石", "마부귀: 가슴 위 바위 깨기", null, null },
+		new[] { "馬富貴 買飲料", "마부귀: 음료 구매", null, null },
+		new[] { "馬富貴 釣魚", "마부귀의 낚시", null, null },
+		new[] { "龍之反省", "용상의 반성", null, null },
+		new[] { "龍湘出來迎接你", "용상이 마중 나옴", null, null },
+		new[] { "龍湘吹簫", "용상의 퉁소 연주", null, null },
+		new[] { "龍湘吹簫小師妹崇拜", "용상의 퉁소 연주를 동경하는 소사매", null, null },
+		new[] { "龍湘挑戰1", "용상의 도전 1", null, null },
+		new[] { "龍湘挑戰2", "용상의 도전 2", null, null },
+		new[] { "龍湘服務生1", "점원 용상 1", null, null },
+		new[] { "龍湘服務生2", "점원 용상 2", null, null },
+		new[] { "龍湘服務生3", "점원 용상 3", null, null },
+		new[] { "龍湘的挑戰", "용상의 도전", null, null },
+		new[] { "龍湘與福韞", "용상과 복온", null, null },
 	};
 
-	private static Dictionary<string, string> _korean;
+	private static Dictionary<string, string[]> _names;
 
 	// 只有结果和编号的名字（P_成功_001、P_大失敗_002）：结果词按语言换，前缀和编号照留
 	private static readonly Regex Generic = new Regex(@"^P_(大失敗|大成功|失敗|成功|正常|其他|特殊)_(\d+)$");
@@ -142,16 +142,15 @@ internal static class UiEventNames
 		["特殊"] = new[] { "특수", "特殊", "Special" },
 	};
 
-	/// <summary>事件名（游戏里的繁体原文）按界面语言显示：韩语查表，结果加编号的按规则换；查不到的和中文界面返回 null，照原来转简体。</summary>
+	/// <summary>事件名按界面语言查对应列，结果加编号的按规则换；查不到的和中文界面返回 null，由调用处沿用原来的显示。</summary>
 	public static string Display(string raw)
 	{
 		if (string.IsNullOrEmpty(raw))
 		{
 			return null;
 		}
-		string language = TextConverter.DisplayLanguage;
-		int column = language == UiText.Korean ? 0 : language == UiText.Japanese ? 1 : language == UiText.English ? 2 : -1;
-		if (column < 0)
+		int column = UiText.LanguageColumn(TextConverter.DisplayLanguage);
+		if (column == 0)
 		{
 			return null;
 		}
@@ -159,20 +158,16 @@ internal static class UiEventNames
 		Match m = Generic.Match(name);
 		if (m.Success)
 		{
-			return "P_" + GenericWords[m.Groups[1].Value][column] + "_" + m.Groups[2].Value;
+			return "P_" + GenericWords[m.Groups[1].Value][column - 1] + "_" + m.Groups[2].Value;
 		}
-		if (column != 0)
+		if (_names == null)
 		{
-			return null;
-		}
-		if (_korean == null)
-		{
-			_korean = new Dictionary<string, string>();
+			_names = new Dictionary<string, string[]>();
 			foreach (string[] row in Table)
 			{
-				_korean[row[0]] = row[1];
+				_names[row[0]] = row;
 			}
 		}
-		return _korean.TryGetValue(name, out string korean) ? korean : null;
+		return _names.TryGetValue(name, out string[] found) ? UiText.Column(found, column) : null;
 	}
 }

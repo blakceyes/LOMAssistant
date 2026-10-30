@@ -247,7 +247,7 @@ public partial class StoryReviewPanel
 				{
 					foreach (StoryExit exit in script.Exits)
 					{
-						now.Ways.Add((OnPaper(TextConverter.ToSimplified(StoryScripts.Describe(exit))), string.Join("　", script.EffectsOn(exit).ToArray())));
+						now.Ways.Add((OnPaper(StoryScripts.Describe(exit, TextConverter.ForDisplay)), string.Join("　", script.EffectsOn(exit).ToArray())));
 					}
 				}
 				foreach (string pool in LuaParser.Instance.ExtractPositionWorkFromLua(now.Script))

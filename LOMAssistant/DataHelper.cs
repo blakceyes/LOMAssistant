@@ -322,7 +322,8 @@ public static class DataHelper
 		}
 		string fieldValue2 = byKey.GetFieldValue<string>("_desc");
 		fieldValue2 = (fieldValue2.IsNullOrWhiteSpace() ? byKey.name : fieldValue2);
-		item = fieldValue + " - " + fieldValue2;
+		// 用界面翻译已有的分隔符，让编号和完整任务名分别查表。
+		item = fieldValue + " · " + fieldValue2;
 		string text = byKey.Position.ToString();
 		string periodText;
 		bool isInPeriod = GetMissionPeriod(byKey, out periodText);
@@ -487,7 +488,7 @@ public static class DataHelper
 		return LocalizationManager.Instance.LocaleResolver.GetString(battleTeamStat.GetNameKey());
 	}
 
-	/// <summary>事件名（开发者备注）。translate：韩语界面换成韩语译名，「P_成功_001」这类按界面语言换结果词；AI 资料用中文原名，传 false。</summary>
+	/// <summary>事件名（开发者备注）。translate：按界面语言查事件译名，「P_成功_001」这类按规则换结果词；AI 资料用中文原名，传 false。</summary>
 	public static string GetEventName(PositionEventData eventData, bool translate = true)
 	{
 		StoryMappingItem fieldValue = eventData.GetFieldValue<StoryMappingItem>("_config");
