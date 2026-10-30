@@ -108,6 +108,9 @@ internal class InstallerForm : Form
 	private readonly CheckedListBox _plugins = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false, HorizontalScrollbar = true, BorderStyle = BorderStyle.FixedSingle, MinimumSize = new Size(0, 110) };
 	private readonly TextBox _log = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
 	private readonly CheckBox _skipLogo = new CheckBox { Text = L("跳过游戏开头 Logo（想恢复就取消勾选再安装一次）"), AutoSize = true, Checked = true, Margin = new Padding(0, 4, 0, 6) };
+	// 不联网：不去 GitHub 查新版，只装压缩包自带的（想留在旧版的玩家用，比已装的旧也照装）；记在注册表里，下次打开还是这样
+	private readonly CheckBox _offline = new CheckBox { Text = L("不联网检查更新，只装压缩包自带的版本"), AutoSize = true, Checked = OfflineSaved, Margin = new Padding(0, 0, 0, 6) };
+	private const string SettingsKey = @"Software\LOMAssistant\Installer";
 	private readonly Button _install = new Button { Text = L("一键安装 / 更新"), Dock = DockStyle.Fill, Height = 46, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
 	private readonly Button _uninstall = new Button { Text = L("卸载本 Mod"), Dock = DockStyle.Fill, Height = 40, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
 	private readonly Button _export = new Button { Text = L("导出诊断（Mod 不生效时用，打包日志发给作者）"), Dock = DockStyle.Fill, Height = 40, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
@@ -194,6 +197,7 @@ internal class InstallerForm : Form
 			_pluginsNone,
 			_plugins, // 占满剩下的高度，窗口拉高列表跟着变高，并把下面的压到底部
 			_skipLogo,
+			_offline,
 			_install,
 			buttons,
 		};
@@ -267,7 +271,28 @@ internal class InstallerForm : Form
 		{
 			Log(L("没有自动找到游戏目录，请点「选择…」手动选择游戏目录（里面有 Mortal.exe）。"));
 		}
-		CheckOnline();
+		_noUpdate = _offline.Checked;
+		if (_noUpdate)
+		{
+			Log(L("已关闭联网检查更新，不连 GitHub。"));
+			_onlineDone = true;
+			UpdateVersions();
+		}
+		else
+		{
+			CheckOnline();
+		}
+		_offline.CheckedChanged += delegate
+		{
+			SaveOffline(_offline.Checked);
+			// 关掉不联网时还没查过就现在查
+			if (!_offline.Checked && !_checkedOnline)
+			{
+				_onlineDone = false;
+				CheckOnline();
+			}
+			UpdateVersions();
+		};
 		// 小屏幕（1366x768 笔记本）放不下就缩到屏幕工作区里，不让下面的按钮跑到任务栏底下
 		Load += delegate
 		{
@@ -514,7 +539,12 @@ internal class InstallerForm : Form
 		Version bundled = BundledVersion();
 		Version target = null;
 		string note;
-		if (!_onlineDone)
+		if (_noUpdate)
+		{
+			target = bundled;
+			note = bundled != null ? L("已关闭联网检查，安装压缩包自带的版本") : L("已关闭联网检查，这个安装器也不在解压后的压缩包里");
+		}
+		else if (!_onlineDone)
 		{
 			target = bundled;
 			note = L("正在检查 GitHub 上的最新版…");
@@ -533,9 +563,13 @@ internal class InstallerForm : Form
 		{
 			note = L("连不上 GitHub，这个安装器也不在解压后的压缩包里");
 		}
-		if (installed != null && target != null && (Short(installed) == Short(target) || installed > target))
+		if (installed != null && target != null && Short(installed) == Short(target))
 		{
-			note = L("已经是最新版");
+			note = _noUpdate ? L("已经装的就是压缩包里的版本") : L("已经是最新版");
+		}
+		else if (installed != null && target != null && installed > target)
+		{
+			note = _noUpdate ? L("会换成压缩包自带的旧版本") : L("已经是最新版");
 		}
 		_versionFrom.Text = _game == null ? "-" : installed != null ? Short(installed) : L("未安装");
 		_versionTo.Text = target != null ? Short(target) : "-";
@@ -850,8 +884,49 @@ internal class InstallerForm : Form
 
 	// ---------------- 联网检查 ----------------
 
+	// 这次打开安装器后查过 GitHub 没有
+	private bool _checkedOnline;
+
+	// 安装在后台线程跑，读这个，不去碰勾选框
+	private volatile bool _noUpdate;
+
+	private static bool OfflineSaved
+	{
+		get
+		{
+			try
+			{
+				using (RegistryKey k = Registry.CurrentUser.OpenSubKey(SettingsKey))
+				{
+					return k != null && k.GetValue("Offline") is int v && v == 1;
+				}
+			}
+			catch
+			{
+				return false;
+			}
+		}
+	}
+
+	private void SaveOffline(bool on)
+	{
+		_noUpdate = on;
+		try
+		{
+			using (RegistryKey k = Registry.CurrentUser.CreateSubKey(SettingsKey))
+			{
+				k.SetValue("Offline", on ? 1 : 0, RegistryValueKind.DWord);
+			}
+		}
+		catch (Exception e)
+		{
+			Log(F("没能记住「不联网检查更新」（{0}），下次打开要重新勾选。", e.Message));
+		}
+	}
+
 	private void CheckOnline()
 	{
+		_checkedOnline = true;
 		var thread = new Thread(() =>
 		{
 			try
@@ -998,6 +1073,7 @@ internal class InstallerForm : Form
 		}
 		_install.Enabled = false;
 		_browse.Enabled = false;
+		_offline.Enabled = false;
 		var thread = new Thread(() => Install(disable)) { IsBackground = true };
 		thread.Start();
 	}
@@ -1006,14 +1082,15 @@ internal class InstallerForm : Form
 	{
 		try
 		{
-			for (int i = 0; i < 40 && !_onlineDone; i++)
+			for (int i = 0; i < 40 && !_onlineDone && !_noUpdate; i++)
 			{
 				Thread.Sleep(250);
 			}
 			// 已经是最新版（且加载器在）就不再下载、覆盖，只处理勾选的冲突 Mod
 			Version installed = DllVersion(Path.Combine(_game, ModDll));
 			Version newest = BundledVersion();
-			if (_latest != null && (newest == null || _latest > newest))
+			bool offline = _noUpdate;
+			if (!offline && _latest != null && (newest == null || _latest > newest))
 			{
 				newest = _latest;
 			}
@@ -1025,8 +1102,9 @@ internal class InstallerForm : Form
 			{
 				Log(L("加载器开关被关掉了（doorstop_config.ini 里 enabled = false），重新安装把它打开。"));
 			}
+			// 不联网时只看是不是和压缩包里的一样：已装的更新也换成压缩包里的（玩家就是想装回这一版）
 			if (installed != null && newest != null && File.Exists(Path.Combine(_game, "winhttp.dll")) && !mixed && !switchedOff
-				&& (Short(installed) == Short(newest) || installed > newest))
+				&& (Short(installed) == Short(newest) || installed > newest && !offline))
 			{
 				if (Diagnostics.IgnoreDisableSwitch(_game))
 				{
@@ -1034,10 +1112,11 @@ internal class InstallerForm : Form
 				}
 				DisablePlugins(disable);
 				Logo();
-				Finish(true, F("已经是最新版本 {0}，不需要重新安装。", Short(installed)) + (disable.Count > 0 ? "\n\n" + L("勾选的 Mod 已移到「BepInEx\\DisabledMods」。") : ""));
+				Finish(true, (offline ? F("已经装的就是压缩包里的 {0}，不需要重新安装。", Short(installed)) : F("已经是最新版本 {0}，不需要重新安装。", Short(installed)))
+					+ (disable.Count > 0 ? "\n\n" + L("勾选的 Mod 已移到「BepInEx\\DisabledMods」。") : ""));
 				return;
 			}
-			string source = ChooseSource();
+			string source = ChooseSource(offline);
 			if (source == Downgrade)
 			{
 				Finish(false, F("没能从 GitHub 下载最新版（{0}），压缩包自带的 {1} 比已经装的 {2} 还旧，没有安装，已装的版本保持不变。\n\n请稍后再试，或到 B站视频简介里的夸克网盘链接、GitHub 的 Releases 页面下载最新版的压缩包。", _downloadError ?? L("连不上 GitHub"), Short(BundledVersion()), Short(DllVersion(Path.Combine(_game, ModDll)))));
@@ -1096,11 +1175,23 @@ internal class InstallerForm : Form
 	// 这次安装时下载最新版失败的原因；没下载或下载成功为 null
 	private string _downloadError;
 
-	private string ChooseSource()
+	private string ChooseSource(bool offline)
 	{
 		_downloadError = null;
 		Version bundled = BundledVersion();
 		bool hasBundled = bundled != null;
+		if (offline)
+		{
+			if (!hasBundled)
+			{
+				return null;
+			}
+			Version old = DllVersion(Path.Combine(_game, ModDll));
+			Log(old != null && old > bundled && Short(old) != Short(bundled)
+				? F("已关闭联网检查，把已装的 {1} 换成压缩包自带的 {0}。", Short(bundled), Short(old))
+				: F("已关闭联网检查，安装压缩包自带的版本 {0}。", Short(bundled)));
+			return _payload;
+		}
 		if (_latest != null && _latestUrl != null && (bundled == null || Short(_latest) != Short(bundled) && _latest > bundled))
 		{
 			try
@@ -1290,6 +1381,7 @@ internal class InstallerForm : Form
 			SetGame(_game);
 			_install.Enabled = true;
 			_browse.Enabled = true;
+			_offline.Enabled = true;
 			MessageBox.Show(this, message, title ?? L(ok ? "安装完成" : "安装失败"), MessageBoxButtons.OK, icon ?? (ok ? MessageBoxIcon.Information : MessageBoxIcon.Error));
 		}));
 	}
@@ -1302,6 +1394,7 @@ internal class InstallerForm : Form
 	{
 		_install.Enabled = true;
 		_browse.Enabled = true;
+		_offline.Enabled = true;
 		bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
 			.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
 		Log(L(admin ? "没有写入游戏目录的权限（安装器已经是以管理员身份运行）。" : "没有写入游戏目录的权限（安装器不是以管理员身份运行）。"));
