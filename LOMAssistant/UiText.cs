@@ -96,7 +96,7 @@ public static class UiText
 				Match m = pattern.Match(core);
 				if (m.Success)
 				{
-					// 参数也可能是句式；只递归更短的原文，最多八层，避免循环匹配。
+					// 参数也可能是句式；只递归更短的原文，最多再查八层，避免循环匹配。
 					found = string.Format(format, m.Groups.Cast<Group>().Skip(1).Select(g => (object)(
 						lang.Exact.TryGetValue(g.Value, out string part) || lang.Game.TryGetValue(g.Value, out part)
 							? part
@@ -142,7 +142,10 @@ public static class UiText
 		foreach (string[] row in table)
 		{
 			string simplified = TextConverter.ToSimplified(row[0]);
-			if (!map.ContainsKey(simplified)) map[simplified] = row[1];
+			if (!map.ContainsKey(simplified))
+			{
+				map[simplified] = row[1];
+			}
 		}
 		string names = string.Join("|", map.Keys.OrderByDescending(n => n.Length).Select(Regex.Escape).ToArray());
 		const string comparison = "(?:>=|<=|!=|=|>|<|≥|≤|≠)";

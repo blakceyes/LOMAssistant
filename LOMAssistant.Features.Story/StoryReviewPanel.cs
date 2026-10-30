@@ -330,9 +330,12 @@ public partial class StoryReviewPanel : MonoBehaviour
 	private void RefreshDisplayLanguage()
 	{
 		string language = TextConverter.DisplayLanguage;
-		if (_displayLanguage == language) return;
+		if (_displayLanguage == language)
+		{
+			return;
+		}
 		_displayLanguage = language;
-		// Graph labels and collection summaries are translated before shortening/composition.
+		// 图里的文字和收集说明已在截短、拼接前翻译；切换语言后要重新生成。
 		_flowCache.Clear();
 		_flow = null;
 		_route = null;
@@ -700,7 +703,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 	/// <summary>界面用的短文字：先翻译再截短。返回值只供显示，不作为节点或分支的标识。</summary>
 	private static string Short(string text, int length)
 	{
-		// A clipped source sentence can no longer match its translation template.
+		// 原文截短后可能对不上翻译句式，所以先翻译完整文字。
 		text = TextConverter.ForDisplay(RichText.Strip(text ?? "")).Replace("\n", " ");
 		return text.Length <= length ? text : text.Substring(0, length) + "…";
 	}
@@ -912,7 +915,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			{
 				parts.Add("决斗输了");
 			}
-			// Translate each complete sentence before joining its heading and route.
+			// 标题和每一步说明先各自翻译，再拼起来，免得完整句式对不上。
 			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.Select(TextConverter.ForDisplay).ToArray()) : TextConverter.ForDisplay("：走到这一段就会触发");
 			lines.Add(OnPaper(TextConverter.ForDisplay(head) + steps));
 		}

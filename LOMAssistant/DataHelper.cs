@@ -322,7 +322,7 @@ public static class DataHelper
 		}
 		string fieldValue2 = byKey.GetFieldValue<string>("_desc");
 		fieldValue2 = (fieldValue2.IsNullOrWhiteSpace() ? byKey.name : fieldValue2);
-		// Keep both complete names readable by the shared UI translation splitter.
+		// 用界面翻译已有的分隔符，让编号和完整任务名分别查表。
 		item = fieldValue + " · " + fieldValue2;
 		string text = byKey.Position.ToString();
 		string periodText;

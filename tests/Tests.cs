@@ -156,7 +156,11 @@ public static class Tests
 			foreach (string alias in aliases)
 			{
 				string[] row = table.FirstOrDefault(r => r[0] == alias);
-				if (row == null) { Assert(language != "Korean", alias + "：缺少韩语条件名"); continue; }
+				if (row == null)
+				{
+					Assert(language != "Korean", alias + "：缺少韩语条件名");
+					continue;
+				}
 				foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
 				{
 					foreach (string space in new[] { "", " ", "\t" })
@@ -164,7 +168,7 @@ public static class Tests
 						string source = alias + space + op + space + "-40";
 						string expected = row[1] + space + op + space + "-40";
 						Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
-						Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + ": rich text " + source);
+						Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + "：富文本 " + source);
 					}
 				}
 			}
@@ -187,14 +191,16 @@ public static class Tests
 		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
 		{
 			foreach (string source in aliases.Select(a => a + " ≥ 40").Concat(new[] { "接到「接到「养成」」" }))
-				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": passthrough " + source);
+			{
+				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + "：应原样返回 " + source);
+			}
 		}
 		string deep = string.Concat(Enumerable.Repeat("看剧情图：", 50)) + "M12345";
 		foreach (string language in new[] { "Korean", "Japanese", "English" })
 		{
 			string result = LOMAssistant.UiText.Translate(deep, language);
-			Assert(result.EndsWith("M12345") && result.Contains("看剧情图："), language + ": bounded nesting must preserve the remainder");
-			Assert(LOMAssistant.UiText.Translate(deep, language) == result, language + ": cached result changed");
+			Assert(result.EndsWith("M12345") && result.Contains("看剧情图："), language + "：达到嵌套上限后应保留剩余文字");
+			Assert(LOMAssistant.UiText.Translate(deep, language) == result, language + "：缓存结果发生变化");
 		}
 	}
 
@@ -208,7 +214,7 @@ public static class Tests
 			{
 				string[] row = table.Single(r => r[0] == key);
 				string simplified = LOMAssistant.TextConverter.ToSimplified(key);
-				Assert(LOMAssistant.UiText.Translate(simplified + ">=40", language) == row[1] + ">=40", language + ": simplified condition alias");
+				Assert(LOMAssistant.UiText.Translate(simplified + ">=40", language) == row[1] + ">=40", language + "：简体条件名别名");
 			}
 			foreach (string op in new[] { ">=", "<=", "!=", "=", ">", "<", "≥", "≤", "≠" })
 			{
@@ -219,12 +225,12 @@ public static class Tests
 					string source = "好感度_二师兄" + op + right;
 					string expected = leftText + op + rightText;
 					Assert(LOMAssistant.UiText.Translate(source, language) == expected, language + ": " + source);
-					Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + ": comparison tags");
+					Assert(LOMAssistant.UiText.Translate("<b>" + source + "</b>", language) == "<b>" + expected + "</b>", language + "：比较条件的富文本标签");
 				}
 			}
 		}
-		Assert(LOMAssistant.UiText.Translate("心上人!=自己", "Korean") == "마음에 둔 사람!=자신", "Compact named right operand");
-		Assert(LOMAssistant.UiText.Translate("그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Korean") == "그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Clipped translated condition stays intact");
+		Assert(LOMAssistant.UiText.Translate("心上人!=自己", "Korean") == "마음에 둔 사람!=자신", "简略条件中的右侧名称");
+		Assert(LOMAssistant.UiText.Translate("그 외 (공략 중인 인원 수(소사매·상… 미충족)", "Korean") == "그 외 (공략 중인 인원 수(소사매·상… 미충족)", "已翻译的缩略条件应保持原样");
 	}
 
 	/// <summary>实际界面组合：任务编号、地点、选择、掷骰和否则分支。</summary>
@@ -259,10 +265,14 @@ public static class Tests
 			Assert(actual == row[2], row[0] + ": " + row[1] + " => " + actual);
 		}
 		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+		{
 			foreach (string source in new[] { "M7001_02 - 围攻唐门 强制发生", "位置：正心堂", "选「原文」（需 >=40）" })
+			{
 				Assert(LOMAssistant.UiText.Translate(source, language) == source, language + ": " + source);
-		// An exact quest title still wins over splitting at the same punctuation.
-		Assert(LOMAssistant.UiText.Translate("偷懒怪 - 大师兄", "Korean") == "게으름뱅이 - 대사형", "Exact quest title priority");
+			}
+		}
+		// 任务名本身带分隔符时，仍应优先匹配完整名称。
+		Assert(LOMAssistant.UiText.Translate("偷懒怪 - 大师兄", "Korean") == "게으름뱅이 - 대사형", "完整任务名应优先匹配");
 	}
 
 	/// <summary>流程图按原始路径合并：相同显示文案不能让不同分岔共用标识。</summary>
@@ -281,7 +291,10 @@ public static class Tests
 		string Key(params object[] steps)
 		{
 			Array path = Array.CreateInstance(stepType, steps.Length);
-			for (int i = 0; i < steps.Length; i++) path.SetValue(steps[i], i);
+			for (int i = 0; i < steps.Length; i++)
+			{
+				path.SetValue(steps[i], i);
+			}
 			return (string)method.Invoke(null, new object[] { path });
 		}
 		object a = Step("条件", "checkpoint_1", 1), b = Step("条件", "checkpoint_1", 2);
