@@ -534,7 +534,7 @@ public partial class StoryReviewPanel
 		GUILayout.Label(where, _label);
 		// 各段用全角空格隔开，界面翻译时一段一段换（「改」「设成 1」「分支判定」、条件原文）
 		string what = use.Kind + (use.Detail.Length > 0 ? "　" + use.Detail : "");
-		var steps = use.Path.Select(StoryScripts.Describe).ToList();
+		var steps = use.Path.Select(step => StoryScripts.Describe(step, TextConverter.ForDisplay)).ToList();
 		GUILayout.Label(RichText.Strip(what) + (steps.Count > 0 ? "　" + string.Join(" → ", steps.ToArray()) : ""), _muted);
 		GUILayout.EndVertical();
 		GUI.enabled = use.Mission != null;

@@ -719,7 +719,7 @@ public partial class StoryReviewPanel
 			return;
 		}
 		StoryRomance.Stop stop = StoryRomance.StopsOf(_routeHeroine)?.FirstOrDefault(s => s.Mission == m);
-		GUILayout.Label(stop == null ? string.Format("这一站不改{0}的好感，也不设她的结缘旗标", name) : string.Format("和{0}有关：", name) + RomanceParts(stop).TrimStart('　'), WrapSmall(), GUILayout.Width(_routeDetailInner));
+		GUILayout.Label(stop == null ? string.Format("这一站不改{0}的好感，也不设她的结缘旗标", name) : TextConverter.ForDisplay(string.Format("和{0}有关：", name)) + RomanceParts(stop).TrimStart('　'), WrapSmall(), GUILayout.Width(_routeDetailInner));
 		GUILayout.Space(S(6));
 	}
 
@@ -806,8 +806,8 @@ public partial class StoryReviewPanel
 	/// <summary>从别的任务接进来的一处：「从「某任务」：选… → 如果…」。</summary>
 	private static string EntryText(StoryEntry e)
 	{
-		string from = (e.From.Main ? "主线" : "支线") + "「" + e.From.Title + "」";
-		return OnPaper("从" + from + "接进来" + (e.Path.Count > 0 ? "：" + string.Join(" → ", e.Path.Select(StoryScripts.Describe).ToArray()) : ""));
+		string from = (e.From.Main ? "主线" : "支线") + "「" + TextConverter.ForDisplay(e.From.Title) + "」";
+		return OnPaper(TextConverter.ForDisplay("从" + from + "接进来") + (e.Path.Count > 0 ? "：" + string.Join(" → ", e.Path.Select(step => StoryScripts.Describe(step, TextConverter.ForDisplay)).ToArray()) : ""));
 	}
 
 	private void DrawEntries(StoryMission m)

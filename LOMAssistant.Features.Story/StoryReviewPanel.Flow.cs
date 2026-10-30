@@ -822,7 +822,7 @@ public partial class StoryReviewPanel
 		foreach (StoryExit exit in box.Last.Exits)
 		{
 			GUILayout.BeginVertical(_card);
-			GUILayout.Label(Cached(exit, () => OnPaper(StoryScripts.Describe(exit)) + "<color=#A3302A>" + ReadMark(exit) + "</color>"), _rich);
+			GUILayout.Label(Cached(exit, () => OnPaper(StoryScripts.Describe(exit, TextConverter.ForDisplay)) + "<color=#A3302A>" + ReadMark(exit) + "</color>"), _rich);
 			string effects = Cached((exit, "效果", PanelTheme.Dark, LOMAssistant.Config.ConfigManager.ColorOptionDeltas.Value), () => PanelDeltas(string.Join("　", box.Last.EffectsOn(exit).ToArray())));
 			if (effects.Length > 0)
 			{

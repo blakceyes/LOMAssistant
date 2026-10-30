@@ -204,6 +204,35 @@ public static class Tests
 		}
 	}
 
+	/// <summary>详情先翻译各个去处再拼接；原来的 Describe 仍返回原文，不改变非界面调用。</summary>
+	public static void TestStoryDescriptionFormatting()
+	{
+		Type scripts = Mod.GetType("LOMAssistant.Features.Story.StoryScripts");
+		Type exitType = Mod.GetType("LOMAssistant.Features.Story.StoryExit");
+		var raw = scripts.GetMethod("Describe", new[] { exitType });
+		var formatted = scripts.GetMethod("Describe", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { exitType, typeof(Func<string, string>) }, null);
+		object exit = Activator.CreateInstance(exitType);
+		exitType.GetField("ToMap").SetValue(exit, true);
+		exitType.GetField("MainMission").SetValue(exit, "TEST_MAIN_123");
+		const string original = "回到地图，主线推进到「TEST_MAIN_123」";
+		Assert((string)raw.Invoke(null, new[] { exit }) == original, "原文说明的顺序、标点和编号不能改变");
+		foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
+		{
+			Func<string, string> format = text => LOMAssistant.UiText.Translate(text, language);
+			string actual = (string)formatted.Invoke(null, new object[] { exit, format });
+			Assert(actual.Contains("TEST_MAIN_123"), language + "：主线编号应保留");
+			if (language == "Korean")
+			{
+				Assert(actual == "지도로 돌아감，주요 이야기 「TEST_MAIN_123」(으)로 진행", "返回地图和推进主线都应翻译");
+			}
+			if (language.StartsWith("Chinese"))
+			{
+				Assert(actual == original, language + "：原文拼接不变");
+			}
+			Assert((string)raw.Invoke(null, new[] { exit }) == original, language + "：显示转换不能影响原文重载");
+		}
+	}
+
 	/// <summary>流程图省略「需」并转成简体后，仍识别完整条件名和右侧变量。</summary>
 	public static void TestCompactConditionTranslations()
 	{
