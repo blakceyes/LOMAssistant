@@ -155,6 +155,57 @@ public static class Tests
 		Expect(problems);
 	}
 
+	/// <summary>
+	/// 决斗敌方行动预测面板：标题、行动名、可能临场应变，横排（「 · 」拼）和竖排（换行拼）都要能按界面语言换。
+	/// 单空格拼起来的整句 UiText 查不到表，韩语、日语、英语会整段退回中文（以前横排就是这样）。
+	/// </summary>
+	public static void TestDuelForecastText()
+	{
+		var problems = new List<string>();
+		string[] parts = { "敌方预选", "嘴攻", "捅人", "暗器", "备揍", "绝招", "无动作", "可能临场应变" };
+		// 直接查表（不能拿译文和原文比：日语的「暗器」和简体同形，比出来像没翻）
+		var rows = new Dictionary<string, string[]>();
+		foreach (string[] row in (string[][])Static(typeof(LOMAssistant.UiText), "Table"))
+		{
+			rows[row[0]] = row;
+		}
+		var english = (Dictionary<string, string>)Static(typeof(LOMAssistant.UiTextEnglish), "Table");
+		foreach (string part in parts)
+		{
+			if (!rows.TryGetValue(part, out string[] row))
+			{
+				problems.Add("UiText.Table 里没有：" + part);
+				continue;
+			}
+			if (row[1] == null)
+			{
+				problems.Add("韩语没有译文：" + part);
+			}
+			if (row[2] == null)
+			{
+				problems.Add("日语没有译文：" + part);
+			}
+			if (!english.ContainsKey(part))
+			{
+				problems.Add("英语没有译文：" + part);
+			}
+		}
+		// 拼起来以后整段也要换（「嘴攻」在三种语言里都不同形，可以拿译文和原文比）
+		foreach (string lang in new[] { LOMAssistant.UiText.Korean, LOMAssistant.UiText.Japanese, LOMAssistant.UiText.English })
+		{
+			foreach (string separator in new[] { " · ", "\n\n" })
+			{
+				string original = "敌方预选" + separator + "嘴攻";
+				string shown = LOMAssistant.UiText.Translate(original, lang);
+				if (shown == original)
+				{
+					problems.Add(lang + " 里拼起来以后没换：" + original.Replace("\n", "\\n"));
+				}
+			}
+		}
+		Expect(problems);
+	}
+
 	/// <summary>安装器的文字表：载入不报错，每行四列（简体、英、日、韩），占位符一致。</summary>
 	public static void TestInstallerText()
 	{
