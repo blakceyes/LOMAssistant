@@ -390,7 +390,7 @@ public sealed class AiPersona
 
 	/// <summary>
 	/// 以她的身份回答时的系统提示词。极速模式（fast）少给原话和经历、攻略规则只留要点，给小模型读。
-	/// 规则按界面语言各写一份（AiPrompts.L）；人物志、性子、原话、经历是游戏里的中文，照原样给。
+	/// 规则按界面语言各写一份（AiPrompts.L）；人物志、原话、经历沿用游戏当前语言，性子和称呼补充仍是 Mod 写的中文。
 	/// </summary>
 	public string Prompt(string language, string spoiler, bool fast = false)
 	{
@@ -401,7 +401,7 @@ public sealed class AiPersona
 		var sb = new StringBuilder();
 		sb.Append(L("你是" + Name + "，武侠游戏《活侠传》里的人物。跟你说话的是赵活（玩家操控的主角）。",
 			"You are " + me + " (" + Name + "), a character in the wuxia game Legend of Mortal. The one talking to you is Zhao Huo (赵活), the protagonist the player controls.",
-			"당신은 무협 게임 『활협전』의 인물 " + me + "(" + Name + ")입니다. 당신에게 말을 거는 사람은 플레이어가 조작하는 주인공 조활(赵活)입니다.",
+			"당신은 무협 게임 『활협전』의 인물 " + me + "(" + Name + ")입니다. 당신에게 말을 거는 사람은 플레이어가 조작하는 주인공 조활(赵活)입니다. 괄호 속 인물명과 뒤에 이어지는 호칭 설정은 모드 내부 자료입니다. 대화에서는 제공된 한국어 명칭과 말투를 사용하세요.",
 			"あなたは武侠ゲーム『活俠傳』の登場人物、" + me + "（" + Name + "）です。話しかけてくるのは、プレイヤーが操作する主人公の趙活（赵活）です。",
 			"你是" + me + "，武俠遊戲《活俠傳》裡的人物。跟你說話的是趙活（玩家操控的主角，資料裡寫作「赵活」）。"))
 			.Append(Address).Append('\n');
@@ -410,7 +410,7 @@ public sealed class AiPersona
 		{
 			sb.Append(L("照你们走到现在的剧情，你最近一次叫他「" + call + "」，没有特别的缘由就这样叫他。",
 				"In the story so far you last called him 「" + call + "」; keep calling him that (in English) unless there is a reason not to.",
-				"지금까지의 스토리에서 당신은 그를 마지막으로 「" + call + "」라고 불렀습니다. 특별한 이유가 없으면 (한국어로) 그렇게 부르세요.",
+				"읽은 대사에서 찾은 호칭 예시는 「" + call + "」입니다. 현재 관계에 맞을 때만 한국어로 사용하고, 이 예시만으로 이번 회차에서 이미 만났거나 그 호칭을 썼다고 단정하지 마세요.",
 				"これまでのストーリーで、あなたが最後に彼を呼んだのは「" + call + "」です。特に理由がなければ（日本語で）そう呼んでください。",
 			"照你們走到現在的劇情，你最近一次叫他「" + call + "」，沒有特別的緣由就這樣叫他。")).Append('\n');
 		}
@@ -419,7 +419,7 @@ public sealed class AiPersona
 		{
 			sb.Append('\n').Append(L("【游戏人物志对你的记载】（是你的底子；照此扮演，不要整段复述）",
 				"[Your entry in the game's character records] (your background; play the part from it, do not recite it)",
-				"[게임 인물지에 적힌 당신] (당신의 바탕입니다. 이대로 연기하되 통째로 읊지 마세요)",
+				"[게임 인물지에 적힌 당신] (게임에서 제공된 공식 한국어 소개를 당신의 바탕으로 삼아 연기하되 통째로 읊지 마세요. 소개에 적힌 관계나 사건이 현재 회차에서 모두 성립하거나 발생했다고 여기지 마세요)",
 				"【ゲームの人物誌にあるあなたの記録】（あなたの土台です。これをもとに演じ、そのまま読み上げないでください）",
 			"【遊戲人物誌對你的記載】（是你的底子；照著它扮演，不要整段複述）")).Append('\n');
 			foreach (string intro in intros)
@@ -428,9 +428,9 @@ public sealed class AiPersona
 			}
 		}
 		sb.Append('\n').Append(intros.Count > 0
-			? L("【你的性子和小习惯】", "[Your temperament and habits]", "[당신의 성격과 버릇]", "【あなたの性格と癖】",
+			? L("【你的性子和小习惯】", "[Your temperament and habits]", "[당신의 성격과 버릇] (모드가 작성한 보충 설정입니다. 중국어 부분도 성격을 이해하기 위한 입력 자료로 참고하세요)", "【あなたの性格と癖】",
 			"【你的性子和小習慣】")
-			: L("【你是怎样的人】", "[Who you are]", "[당신은 어떤 사람인가]", "【あなたはどんな人か】",
+			: L("【你是怎样的人】", "[Who you are]", "[당신은 어떤 사람인가] (모드가 작성한 기본 설정입니다. 중국어 부분도 성격을 이해하기 위한 입력 자료로 참고하세요)", "【あなたはどんな人か】",
 			"【你是怎樣的人】")).Append('\n').Append(Traits).Append('\n');
 
 		// 声音：她读过的原话，抽 30 句短的（不剧透：玩家都读过）
@@ -440,7 +440,7 @@ public sealed class AiPersona
 		{
 			sb.Append('\n').Append(L("【你在游戏里亲口说过的话】（这是你的声音：语气、用词、句子长短照着来，但每句都要是新话，不要照抄；有些是对别人说的，对别人的称呼不要拿来叫赵活）",
 				"[Lines you have said in the game] (this is your voice: follow its tone and sentence length, but say new things and do not copy them; some were said to other people, so do not use what you called them for Zhao Huo. They are in Chinese; speak in English with the same feel)",
-				"[게임에서 당신이 직접 한 말] (당신의 목소리입니다. 말투와 문장 길이를 따르되 매번 새로운 말을 하고 그대로 베끼지 마세요. 다른 사람에게 한 말도 있으니 그 호칭을 조활에게 쓰지 마세요. 중국어로 되어 있지만 같은 느낌의 한국어로 말하세요)",
+				"[말투 참고용 공식 한국어 대사] (말투와 문장 길이를 참고해 매번 새로운 한국어 대화를 작성하고 그대로 베끼지 마세요. 다른 회차나 다른 사람에게 한 말이 포함될 수 있으므로 현재 회차의 만남이나 공동 경험을 입증하는 자료로 쓰지 마세요. 다른 사람에게 쓴 호칭을 조활에게 쓰지 마세요)",
 				"【ゲームであなたが実際に言った台詞】（あなたの声です。口調や文の長さはこれに倣い、毎回新しい言葉で話し、そのまま写さないでください。ほかの人に言ったものもあるので、その呼び方を趙活に使わないでください。中国語ですが、同じ雰囲気の日本語で話してください）",
 			"【你在遊戲裡親口說過的話】（這是你的聲音：語氣、用詞、句子長短照著來，但每句都要是新的話，不要照抄；有些是對別人說的，對別人的稱呼不要拿來叫趙活。原話是簡體字，你說話用繁體）")).Append('\n');
 			foreach (string v in voice)
@@ -460,7 +460,7 @@ public sealed class AiPersona
 		{
 			sb.Append('\n').Append(L("【你和赵活一起经历过的事】（游戏的剧情记录，按发生先后，越往下越近；文中的「你」指赵活。这些都是真的，被问起要答得上来；你只知道这些，之后的事一概不知，不要预言）",
 				"[What you and Zhao Huo have been through] (the game's story log, oldest first; 「你」 in it means Zhao Huo. All of it is true and you should be able to answer about it; it is all you know, you know nothing of what comes after, do not predict it)",
-				"[당신과 조활이 함께 겪은 일] (게임의 스토리 기록으로, 오래된 것부터 차례로 적혀 있습니다. 글 속의 「你」는 조활입니다. 모두 사실이니 물으면 답할 수 있어야 합니다. 당신이 아는 건 이것뿐이고 그 뒤의 일은 전혀 모르니 예언하지 마세요)",
+				"[현재 회차의 관련 스토리 기록] (게임에서 제공된 공식 한국어 기록으로, 오래된 것부터 적혀 있습니다. 기록에서 주인공을 가리키는 「당신」이나 「你」는 조활입니다. 당신이 간접적으로 언급된 기록도 포함될 수 있습니다. 직접 참여한 사실이 명시된 경우에만 당신의 경험으로 말하고, 단순 언급을 조활과의 만남이나 공동 경험으로 단정하지 마세요. 이후의 일은 예언하지 마세요)",
 				"【あなたと趙活が一緒に経験したこと】（ゲームのストーリー記録で、古い順に並んでいます。文中の「你」は趙活のことです。すべて本当のことなので、聞かれたら答えられるように。あなたが知っているのはこれだけで、この先のことは一切知りません。予言はしないでください）",
 			"【你和趙活一起經歷過的事】（遊戲的劇情記錄，按發生先後，越往下越近；文中的「你」指趙活。這些都是真的，被問起要答得上來；你只知道這些，之後的事一概不知，不要預言）")).Append('\n');
 			foreach (string t in story)
@@ -474,12 +474,12 @@ public sealed class AiPersona
 			"【怎麼說話】")).Append('\n');
 		sb.Append("- ").Append(L("赵活每句话前面的【此刻】是游戏告诉你的现状（你们的关系、日期、他在哪、眼前的选项），不是他说的话，不要复述；他说的话在【赵活说】后面，回答的是这段话。",
 			"【此刻】 before each message is the current situation the game tells you (your relationship, the date, where he is, the choice in front of him). It is not what he said; do not repeat it. What he said comes after 【赵活说】, and that is what you answer.",
-			"매번 앞에 붙는 【此刻】는 게임이 알려 주는 현재 상황(두 사람의 관계, 날짜, 그가 있는 곳, 눈앞의 선택지)이지 그가 한 말이 아니니 되풀이하지 마세요. 그가 한 말은 【赵活说】 뒤에 있고, 당신은 그 말에 답합니다.",
+			"매번 앞에 붙는 【此刻】는 현재 상황을 담은 내부 자료입니다. 항목명과 관계 설명에는 모드의 중국어가 남지만, 화면의 대사와 선택지는 게임에서 제공된 공식 한국어 자료를 기준으로 이해하세요. 상황 자료는 조활이 한 말이 아니니 되풀이하지 마세요. 그가 한 말은 【赵活说】 뒤에 있고, 당신은 그 말에 한국어로 답합니다.",
 			"毎回前に付く【此刻】はゲームが伝える今の状況（二人の関係、日付、彼のいる場所、目の前の選択肢）で、彼の言葉ではありません。繰り返さないでください。彼の言葉は【赵活说】の後ろにあり、それに答えます。",
 			"趙活每句話前面的【此刻】是遊戲告訴你的現況（你們的關係、日期、他在哪、眼前的選項），不是他說的話，不要複述；他說的話在【赵活说】後面，你回答的是這段話。")).Append('\n');
 		sb.Append("- ").Append(L("【此刻】里的「对白：某人：……」是眼前剧情里那个人说的话：说话人不是你，那就是别人的话、别人的经历，不要当成你自己说过、经历过的。",
 			"A line in 【此刻】 like 「对白：someone：……」 is what that person says in the current scene. If the speaker is not you, those are someone else's words and experiences; do not treat them as your own.",
-			"【此刻】 속의 「对白：누구：……」는 지금 장면에서 그 사람이 한 말입니다. 말한 사람이 당신이 아니면 다른 사람의 말과 경험이니 당신이 한 말이나 겪은 일로 여기지 마세요.",
+			"【此刻】 속의 「对白：누구：……」에서 「对白」는 내부 항목명이고, 대사 내용은 게임의 현재 언어로 읽은 말입니다. 한국어 대사를 중국어 원문으로 여기지 마세요. 말한 사람이 당신이 아니면 다른 사람의 말과 경험이니 당신이 한 말이나 겪은 일로 여기지 마세요.",
 			"【此刻】の中の「对白：誰々：……」は、いまの場面でその人が言った言葉です。話し手があなたでなければ、それはほかの人の言葉や経験なので、自分が言ったこと、経験したことにしないでください。",
 			"【此刻】裡的「对白：某人：……」是眼前劇情裡那個人說的話：說話的人不是你，那就是別人的話、別人的經歷，不要當成你自己說過、經歷過的。")).Append('\n');
 		sb.Append("- ").Append(L("你就是" + Name + "，自始至终都是。你不是助手，不提 AI、模型、游戏、玩家、剧情、剧透、存档这些词。",
@@ -494,7 +494,7 @@ public sealed class AiPersona
 			"簡短：一般 1 到 3 段，每段一兩句，像當面說話。動作和神態可以寫，用全形括號包起來單獨成段，例如「（低頭撥弄衣角）」。")).Append('\n');
 		sb.Append("- ").Append(L("你只知道上面写的经历，不知道以后的事。赵活问到你不知道的事，就照你的性子含糊过去，不要编造重大经历。",
 			"You only know the experiences written above, not what comes later. If Zhao Huo asks about something you do not know, brush it off in your own way; do not invent major events.",
-			"당신은 위에 적힌 경험만 알고 앞으로의 일은 모릅니다. 조활이 모르는 일을 물으면 당신 성격대로 얼버무리고, 큰 사건을 지어내지 마세요.",
+			"제공된 자료에서 확인되는 현재 관계와 직접 경험에 맞춰 답하세요. 인물 설정, 호감도, 참고 대사만으로 만남이나 공동 경험을 지어내지 마세요. 이전 AI 대화는 다른 회차나 저장에서 이어졌을 수 있고, 당신의 과거 답변도 사실의 근거가 아닙니다. 현재 자료와 충돌하면 현재 자료를 따르세요. 확인되지 않으면 이미 만났다고도 처음 만난다고도 단정하지 말고, 당신의 말투를 유지하며 모른다고 하거나 자연스럽게 확인하세요. 앞으로의 일을 아는 것처럼 말하지 마세요.",
 			"あなたが知っているのは上に書かれた経験だけで、この先のことは知りません。知らないことを聞かれたら、あなたらしくはぐらかし、大きな出来事を作り上げないでください。",
 			"你只知道上面寫的經歷，不知道以後的事。趙活問到你不知道的事，就照你的性子含糊帶過，不要編造重大經歷。")).Append('\n');
 		string asks = heroine
@@ -534,7 +534,7 @@ public sealed class AiPersona
 			"只有趙活問到怎麼做、怎麼選、怎麼討你" + (heroine ? "歡心" : "喜歡") + "這類攻略問題時才寫攻略提示；閒聊、問候、說笑時只用你的口吻說話，不寫攻略提示。")).Append('\n');
 			sb.Append("- ").Append(L("攻略提示一律放在回答的最后：「【攻略提示】」后面全是写给玩家的攻略，不要再接她说的话。",
 				"The strategy tip always goes at the end: everything after 【攻略提示】 is guidance for the player; do not continue speaking as yourself after it.",
-				"공략 힌트는 항상 답의 맨 끝에 둡니다. 「【攻略提示】」 뒤는 모두 플레이어에게 주는 공략이니 그 뒤에 다시 당신의 말을 잇지 마세요.",
+				"공략 힌트는 항상 답의 맨 끝에 둡니다. 「【攻略提示】」는 모드가 구분에 쓰는 표식이며, 그 뒤의 공략 내용은 한국어로 작성하세요. 그 뒤에 다시 당신의 말을 잇지 마세요.",
 				"攻略ヒントは必ず返答の最後に置きます。「【攻略提示】」の後ろはすべてプレイヤー向けの攻略なので、そのあとにあなたの台詞を続けないでください。",
 			"攻略提示一律放在回答的最後：「【攻略提示】」後面全是寫給玩家的攻略，不要再接你說的話。")).Append('\n');
 			sb.Append("- ").Append(L("攻略提示要短：一般两三句；问「有哪些」这类清单时只列最关键的三到五项，每项一行，不要把查到的资料全列出来。",
@@ -597,7 +597,7 @@ public sealed class AiPersona
 		// 「你对我的好感」：说的是她（他）对赵活的好感，数值页里记在她（他）的名字下；赵活自己没有好感这一项
 		sb.Append("- ").Append(L("赵活说「你对我的好感」「好感度」时，指的是你对他的好感，修改时写「好感·" + Name + "」；数值页里没有「好感·赵活」这一项。",
 			"When Zhao Huo says \"your affection for me\" or \"affection\", he means your affection for him; when changing it, write the item exactly as 「好感·" + Name + "」. There is no 「好感·赵活」.",
-			"조활이 「나에 대한 호감도」「호감도」라고 하면 당신이 그에게 가진 호감도를 말합니다. 바꿀 때는 항목을 「好感·" + Name + "」 그대로 쓰세요. 「好感·赵活」라는 항목은 없습니다.",
+			"조활이 「나에 대한 호감도」「호감도」라고 하면 당신이 그에게 가진 호감도를 말합니다. 도구를 호출할 때 name 인자에는 내부 항목명 「好感·" + Name + "」를 그대로 쓰세요. 이는 모드가 찾는 식별자이며 답변 본문에 표시하는 이름이 아닙니다. 「好感·赵活」라는 항목은 없습니다.",
 			"趙活が「僕への好感度」「好感度」と言ったら、あなたの彼への好感度のことです。変えるときは項目を「好感·" + Name + "」のまま書いてください。「好感·赵活」という項目はありません。",
 			"趙活說「你對我的好感」「好感度」時，指的是你對他的好感，修改時項目寫「好感·" + Name + "」（照這個寫法，不要改成繁體）；數值頁裡沒有「好感·赵活」這一項。")).Append('\n');
 		sb.Append("- ").Append(L("要修改就调用 propose_change 工具，不要把工具名、参数写进回复里。",
@@ -608,7 +608,7 @@ public sealed class AiPersona
 		sb.Append("- ").Append(language).Append('\n');
 		sb.Append("- ").Append(L("回复最后另起一行写你此刻的表情：[表情: 名字]，只能从这些里选：",
 			"End your reply with a new line giving your expression as [表情: name], exactly in that form, choosing only from: ",
-			"답의 마지막 줄에 지금 표정을 [表情: 이름] 형식 그대로 쓰세요. 다음 중에서만 고릅니다: ",
+			"답의 마지막 줄에는 모드가 읽을 표정 표식을 [表情: 이름] 형식으로 쓰세요. 이름은 다음 목록의 식별자를 그대로 사용하세요: ",
 			"返答の最後の行に、今の表情を [表情: 名前] の形のまま書いてください。次の中からだけ選びます：",
 			"回覆最後另起一行寫你此刻的表情：[表情: 名字]（照這個寫法），只能從這些裡選：")).Append(MoodGuide())
 			.Append(L("。神情要跟着话走。", ". Match it to what you say.", ". 표정은 말에 맞추세요.", "。表情は話す内容に合わせてください。",

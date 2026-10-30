@@ -141,7 +141,7 @@ public static class AiChat
 		// 系统提示词这一问只算一次，每轮都一样（缓存靠它）；会变的现状接在这次问题前面
 		string system = (persona != null ? persona.Prompt(LanguageRule, Spoiler, Fast) : SystemPrompt()) + DeepRule;
 		string context = persona != null ? persona.Context() : "";
-		// 现状是中文写的，玩家的话标出来：不然整条消息大半是中文，模型会照着中文回答，也会把眼前的选项当成玩家在问
+		// 现状的字段和关系说明仍有中文，游戏对白、选项沿用游戏当前语言；标出玩家的话，避免把背景资料当成提问或回答语言
 		var asking = new ChatMessage { Role = ChatMessage.User, Text = context.Length > 0 ? context + "\n\n【赵活说】\n" + asked : asked };
 		// 同一个问题里一模一样的查询不再重查、不再把结果再发一遍
 		var looked = new HashSet<string>();
@@ -228,7 +228,7 @@ public static class AiChat
 				turn.Add(new ChatMessage { Role = ChatMessage.Tool, CallId = call.Id, Text = result });
 			}
 		}
-		// 界面是英、韩、日文，玩家也没用中文问，回答却是中文（人设的原话、资料全是中文，规则写成那种语言也拦不住）：
+		// 界面是英、韩、日文，玩家也没用中文问，回答却是中文（游戏原话随当前语言，Mod 的人设补充和工具说明仍可能带来中文）：
 		// 拿这段回答再问一次，只让它改写成界面语言。繁体界面回答成简体时直接转成繁体
 		if (!_stop && answer != null && answer.Length > 0)
 		{
@@ -301,7 +301,7 @@ public static class AiChat
 		{
 			old.Append(history[i].Role == ChatMessage.User ? "玩家：" : "回答：").Append(history[i].Text).Append("\n\n");
 		}
-		string system = "下面是《活侠传》玩家和游戏 Mod 里 AI 的一段对话。把它压缩成摘要，给接着聊的 AI 当记忆用。\n"
+		string system = "下面是《活侠传》玩家和游戏 Mod 里 AI 的一段对话。把它压缩成摘要，给接着聊的 AI 当记忆用，不是向玩家发出的回答。历史保留原有语言，游戏提供的名称和对白随游戏当前语言；中文角色标签和 Mod 标记只是内部结构。沿用已有的人物名和术语，不因中文标签把韩语等原有名称改成中文。\n"
 			+ "- 只记：玩家说过的自己的情况、打算和偏好（走哪条线、想和谁结缘、不想知道什么）；聊过哪些话题；玩家确认或拒绝过哪些修改；说好的约定；还没解决的问题。\n"
 			+ "- 回答里说过的数字、条件、剧情结论不要当事实记，最多写「聊过某某的条件」，之后要用时会重新查。\n"
 			+ "- 开头已经有摘要的，把它和后面的内容合在一起重写成一份。\n"

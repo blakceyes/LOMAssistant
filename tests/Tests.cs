@@ -127,14 +127,107 @@ public static class Tests
 			string actual = LOMAssistant.UiText.Translate(row[0], LOMAssistant.UiText.Korean);
 			Assert(actual == row[1], row[0] + "：预期「" + row[1] + "」，实际「" + actual + "」");
 		}
-		foreach (string name in new[] { "UiConditionNames", "UiFlagNames" })
+	}
+
+	/// <summary>名称表共用原文、韩语、日语、英语四列；未提供的译文用 null，不重复原文键。</summary>
+	public static void TestUiNameTables()
+	{
+		foreach (string name in new[] { "UiConditionNames", "UiFlagNames", "UiQuestNames", "UiEventNames" })
 		{
 			var seen = new HashSet<string>();
-			foreach (string[] row in (string[][])Static(Mod.GetType("LOMAssistant." + name), "Korean"))
+			foreach (string[] row in (string[][])Static(Mod.GetType("LOMAssistant." + name), "Table"))
 			{
-				Assert(row.Length == 2 && !string.IsNullOrWhiteSpace(row[1]), name + "：韩语表格式不对");
+				Assert(row.Length == 4 && !string.IsNullOrWhiteSpace(row[0]), name + "：名称表格式不对");
 				Assert(seen.Add(row[0]), name + "：原文重复「" + row[0] + "」");
+				foreach (string text in row.Skip(1).Where(text => text != null))
+				{
+					Assert(!string.IsNullOrWhiteSpace(text) && Holes(text) == Holes(row[0]), name + "：译文或占位符不对「" + row[0] + "」");
+				}
 			}
+		}
+	}
+
+	// 旧测试仍按「原文、译文」对照，但数据来自共用表的当前语言列。
+	private static string[][] NameTable(string name, string language)
+	{
+		int column = Array.IndexOf(new[] { "", "Korean", "Japanese", "English" }, language);
+		return ((string[][])Static(Mod.GetType("LOMAssistant." + name), "Table"))
+			.Where(row => column > 0 && column < row.Length && row[column] != null)
+			.Select(row => new[] { row[0], row[column] }).ToArray();
+	}
+
+	/// <summary>补上任一语言列就能显示；切换语言不串用译文，缺译仍返回原来的回退结果。</summary>
+	public static void TestUiNameColumns()
+	{
+		string[] languages = { "Korean", "Japanese", "English" };
+		string[] fields = { "_korean", "_japanese", "_english" };
+		var flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+		string[] names = { "UiConditionNames", "UiFlagNames", "UiQuestNames", "UiEventNames" };
+		var tables = names.Select(name => (string[][])Static(Mod.GetType("LOMAssistant." + name), "Table")).ToArray();
+		var savedRows = tables.Select(table => table[table.Length - 1]).ToArray();
+		var caches = fields.Select(field => typeof(LOMAssistant.UiText).GetField(field, flags)).ToArray();
+		var savedCaches = caches.Select(field => field.GetValue(null)).ToArray();
+		Type events = Mod.GetType("LOMAssistant.UiEventNames");
+		FieldInfo eventCache = events.GetField("_names", flags);
+		object savedEventCache = eventCache.GetValue(null);
+		FieldInfo languageSetting = Mod.GetType("LOMAssistant.Config.ConfigManager").GetField("UiLanguage", flags);
+		object savedSetting = languageSetting.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(languageSetting.FieldType);
+		FieldInfo value = languageSetting.FieldType.GetField("m_value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		string[] keys = { "测试条件", "测试旗标", "测试任务", "測試事件" };
+		try
+		{
+			string[] fallbacks = keys.Take(3).Select(key => LOMAssistant.UiText.Translate(key, "English")).ToArray();
+			languageSetting.SetValue(null, setting);
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1] = new[] { keys[i], "검사" + i, "テスト" + i, "Test" + i };
+			}
+			foreach (FieldInfo cache in caches)
+			{
+				cache.SetValue(null, null);
+			}
+			eventCache.SetValue(null, null);
+			foreach (int i in new[] { 0, 1, 2, 1, 0 })
+			{
+				string Expected(int table) => tables[table][tables[table].Length - 1][i + 1];
+				Assert(LOMAssistant.UiText.Translate(keys[0] + ">=40", languages[i]) == Expected(0) + ">=40", languages[i] + "：条件列未接入");
+				Assert(LOMAssistant.UiText.Translate(keys[1] + " (TEST_FLAG) 需=1", languages[i]).StartsWith(Expected(1) + " (TEST_FLAG)"), languages[i] + "：旗标列未接入");
+				Assert(LOMAssistant.UiText.Translate(keys[2], languages[i]) == Expected(2), languages[i] + "：任务列未接入");
+				value.SetValue(setting, i + 3);
+				Assert((string)events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == Expected(3), languages[i] + "：事件列或语言切换不对");
+			}
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1][3] = null;
+			}
+			caches[2].SetValue(null, null);
+			for (int i = 0; i < fallbacks.Length; i++)
+			{
+				Assert(LOMAssistant.UiText.Translate(keys[i], "English") == fallbacks[i], "英语缺译时应沿用原来的回退：" + keys[i]);
+			}
+			value.SetValue(setting, 5);
+			Assert(events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == null, "事件缺译应返回 null");
+			Assert((string)events.GetMethod("Display").Invoke(null, new object[] { "P_大失敗_002" }) == "P_Critical failure_002", "结果事件应保留前缀与编号");
+			foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+			{
+				Assert(LOMAssistant.UiText.Translate(keys[0] + ">=40", language) == keys[0] + ">=40", language + "：原文应保持不变");
+			}
+			value.SetValue(setting, 2);
+			Assert(events.GetMethod("Display").Invoke(null, new object[] { keys[3] }) == null, "中文事件应沿用原来的显示路径");
+		}
+		finally
+		{
+			for (int i = 0; i < tables.Length; i++)
+			{
+				tables[i][tables[i].Length - 1] = savedRows[i];
+			}
+			for (int i = 0; i < caches.Length; i++)
+			{
+				caches[i].SetValue(null, savedCaches[i]);
+			}
+			eventCache.SetValue(null, savedEventCache);
+			languageSetting.SetValue(null, savedSetting);
 		}
 	}
 
@@ -152,7 +245,7 @@ public static class Tests
 		};
 		foreach (string language in new[] { "Korean", "Japanese" })
 		{
-			var table = (string[][])Static(Mod.GetType("LOMAssistant.UiConditionNames"), language);
+			var table = NameTable("UiConditionNames", language);
 			foreach (string alias in aliases)
 			{
 				string[] row = table.FirstOrDefault(r => r[0] == alias);
@@ -238,7 +331,7 @@ public static class Tests
 	{
 		foreach (string language in new[] { "Korean", "Japanese" })
 		{
-			var table = (string[][])Static(Mod.GetType("LOMAssistant.UiConditionNames"), language);
+			var table = NameTable("UiConditionNames", language);
 			foreach (string key in new[] { "攻略小师妹 (攻略人數_排除龍湘)", "攻略小师妹 (攻略人數_三個高手_排除龍湘)" })
 			{
 				string[] row = table.Single(r => r[0] == key);
@@ -268,7 +361,7 @@ public static class Tests
 		foreach (string[] row in new[]
 		{
 			new[] { "Korean", "M7001_02 · 围攻唐门 强制发生", "M7001_02 · 당문 포위 공격 (강제 발생)" },
-			new[] { "Korean", "M12345 · 反间谍 - 限时", "M12345 · 반간첩 - 시간 제한" },
+			new[] { "Korean", "M12345 · 反间谍 - 限时", "M12345 · 방첩 - 시간 제한" },
 			new[] { "Korean", "位置：无", "위치: 없음" },
 			new[] { "Korean", "位置：正心堂", "위치: 정심당" },
 			new[] { "Korean", "位置：校场", "위치: 연무장" },

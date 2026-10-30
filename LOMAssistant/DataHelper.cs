@@ -488,7 +488,7 @@ public static class DataHelper
 		return LocalizationManager.Instance.LocaleResolver.GetString(battleTeamStat.GetNameKey());
 	}
 
-	/// <summary>事件名（开发者备注）。translate：韩语界面换成韩语译名，「P_成功_001」这类按界面语言换结果词；AI 资料用中文原名，传 false。</summary>
+	/// <summary>事件名（开发者备注）。translate：按界面语言查事件译名，「P_成功_001」这类按规则换结果词；AI 资料用中文原名，传 false。</summary>
 	public static string GetEventName(PositionEventData eventData, bool translate = true)
 	{
 		StoryMappingItem fieldValue = eventData.GetFieldValue<StoryMappingItem>("_config");
