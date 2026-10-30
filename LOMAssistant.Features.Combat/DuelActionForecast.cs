@@ -101,8 +101,10 @@ internal sealed class DuelActionForecast : MonoBehaviour
 		}
 
 		string actionName = ActionName(enemyAction.Action);
+		// 两段之间用「\n\n」「 · 」拼：UiText 整句查不到表时按这些分隔符拆开一段段换。
+		// 以前横排用单空格拼（「敌方预选 嘴攻」），既不是整句也不是分隔符，界面是韩语、日语、英语时整段退回中文
 		string text = "敌方预选\n\n" + actionName;
-		string horizontalText = "敌方预选 " + actionName;
+		string horizontalText = "敌方预选 · " + actionName;
 		CombatActionController enemy = manager.EnemyAction;
 		CombatActionController player = manager.PlayerAction;
 		if (enemy != null && player != null && enemy.CanUseAnyAction()
