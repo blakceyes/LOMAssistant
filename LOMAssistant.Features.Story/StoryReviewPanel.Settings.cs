@@ -153,7 +153,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.EnableBackgroundRun, "后台继续运行"),
 				Row(ConfigManager.EnableFastStartup, "开游戏更快"),
 				Row(ConfigManager.EnableFlowSpeedup, "流程提速"),
-				Row(ConfigManager.EnableLibraryDisplay, "讲经堂解锁显示"),
+				new SettingRow { Element = ConfigManager.EnableLibraryDisplay, Name = "讲经堂解锁显示", Choices = new[] { "关", "仅提示", "全部解锁" }, Dropdown = true },
 				Row(ConfigManager.EnableShopAllItems, "四师兄卖全部物品"),
 				new SettingRow { Element = ConfigManager.TitlePartnerChoice, Name = "标题画面人物", Choices = LOMAssistant.Features.Extras.TitlePartnerPatch.Names, Dropdown = true },
 			}),

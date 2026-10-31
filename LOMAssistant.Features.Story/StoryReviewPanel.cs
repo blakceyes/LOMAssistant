@@ -901,11 +901,12 @@ public partial class StoryReviewPanel : MonoBehaviour
 	// ---------------- 收集进度（结局、死亡、成就、CG、剧情） ----------------
 
 	/// <summary>一个结局的「怎么走到」，每处一行，最多四处。</summary>
-	private static string EndingWays(StoryEnding ending)
+	internal static string EndingWays(StoryEnding ending, bool onPaper = true)
 	{
+		string muted = onPaper ? "#73644F" : "#9A9286";
 		if (ending.Ways.Count == 0)
 		{
-			return "<color=#73644F>在剧本和决斗数据里都没找到触发的地方（可能由团战、小游戏等直接触发）</color>";
+			return $"<color={muted}>在剧本和决斗数据里都没找到触发的地方（可能由团战、小游戏等直接触发）</color>";
 		}
 		var lines = new List<string>();
 		foreach (StoryEndingWay way in ending.Ways.Take(4))
@@ -918,11 +919,12 @@ public partial class StoryReviewPanel : MonoBehaviour
 			}
 			// 标题和每一步说明先各自翻译，再拼起来，免得完整句式对不上。
 			string steps = parts.Count > 0 ? "：" + string.Join(" → ", parts.Select(TextConverter.ForDisplay).ToArray()) : TextConverter.ForDisplay("：走到这一段就会触发");
-			lines.Add(OnPaper(TextConverter.ForDisplay(head) + steps));
+			string line = TextConverter.ForDisplay(head) + steps;
+			lines.Add(onPaper ? OnPaper(line) : line);
 		}
 		if (ending.Ways.Count > 4)
 		{
-			lines.Add($"<color=#73644F>还有 {ending.Ways.Count - 4} 处</color>");
+			lines.Add($"<color={muted}>还有 {ending.Ways.Count - 4} 处</color>");
 		}
 		return string.Join("\n", lines.ToArray());
 	}
@@ -938,7 +940,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 	private static readonly string[] EndingFilters = { "全部", "已达成", "未达成" };
 
 	/// <summary>和游戏图鉴一样的编号前缀：汗青书「结局 N　」（按游戏语言），生死簿「N. 」；成就、CG 和图鉴里没有的不加。</summary>
-	private static string EndingNumber(StoryEnding ending)
+	internal static string EndingNumber(StoryEnding ending)
 	{
 		if (ending.Number <= 0 || ending.Item == null || StoryAtlas.Achievements.Contains(ending) || StoryAtlas.Cgs.Contains(ending))
 		{

@@ -15,7 +15,7 @@ public static class ConfigManager
 
 	public static ConfigElement<bool> EnableManualDiceSelection;
 
-	public static ConfigElement<bool> EnableLibraryDisplay;
+	public static ConfigElement<int> EnableLibraryDisplay;
 
 	public static ConfigElement<bool> EnableCombatAssist;
 
@@ -198,7 +198,20 @@ public static class ConfigManager
 		bool updated = false;
 		try
 		{
-			updated = System.IO.File.Exists(Config.ConfigFilePath) && !System.IO.File.ReadAllText(Config.ConfigFilePath).Contains("PresetChooserShown");
+			if (System.IO.File.Exists(Config.ConfigFilePath))
+			{
+				string raw = System.IO.File.ReadAllText(Config.ConfigFilePath);
+				updated = !raw.Contains("PresetChooserShown");
+				// An old true/false fails to parse as int and would fall back to 2 (unlock all).
+				// 旧的 true/false 读不成数字会变成默认的 2（全部解锁），先改写
+				string migrated = raw.Replace("EnableLibraryDisplay = true", "EnableLibraryDisplay = 2")
+					.Replace("EnableLibraryDisplay = false", "EnableLibraryDisplay = 0");
+				if (migrated != raw)
+				{
+					System.IO.File.WriteAllText(Config.ConfigFilePath, migrated);
+					Config.Reload();
+				}
+			}
 		}
 		catch (Exception)
 		{
@@ -381,7 +394,7 @@ public static class ConfigManager
 	{
 		EnableOptionInfo = new ConfigElement<bool>("EnableOptionInfo", "是否启用选项提示（选项结果、解锁条件）、地点事件提示和回想里的判定记录。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableManualDiceSelection = new ConfigElement<bool>("EnableManualDiceSelection", "是否启用骰子手动选择（点击线路直接选中）。true=开，false=关，改后重启生效", defaultValue: true);
-		EnableLibraryDisplay = new ConfigElement<bool>("EnableLibraryDisplay", "是否启用讲经堂解锁显示。true=开，false=关，改后重启生效", defaultValue: true);
+		EnableLibraryDisplay = new ConfigElement<int>("EnableLibraryDisplay", "讲经堂解锁显示：0=关，1=鼠标停在汗青书、生死簿各项上显示达成条件，2=全部显示为已解锁（也显示条件）。改后重启生效", 2);
 		EnableCombatAssist = new ConfigElement<bool>("EnableCombatAssist", "是否启用战斗辅助（ESC界面增加直接获胜按钮）。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableSkipAction = new ConfigElement<bool>("EnableSkipAction", "是否启用空过（养成界面 ESC 菜单增加“空过”按钮，消耗 1 次行动、不触发任何事件）。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableBattleWin = new ConfigElement<bool>("EnableBattleWin", "是否启用团战直接获胜（团战暂停界面增加“直接获胜”按钮）。true=开，false=关，改后重启生效", defaultValue: true);
