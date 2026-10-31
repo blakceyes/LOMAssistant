@@ -43,7 +43,8 @@ internal static class ConditionSolver
 		return any;
 	}
 
-	private static bool? Holds(ConditionResultItem item)
+	/// <summary>一组条件（分支判断的一支）现在是否成立；含读不了的部分时返回 null。</summary>
+	public static bool? Holds(ConditionResultItem item)
 	{
 		var parts = new List<bool>();
 		foreach (StatCompareItem c in item.GetFieldValue<List<StatCompareItem>>("_items"))
@@ -86,6 +87,61 @@ internal static class ConditionSolver
 			else if (same.Value != w.Value) return null; // 两处要把同一个值改成不同的数
 		}
 		return writes;
+	}
+
+	/// <summary>
+	/// 让一组条件不成立的几种改法（反过来的 Satisfy，思路参考分支前瞻）：「且」破掉其中一项就行，每项一种改法，按要改的少排；
+	/// 「或」每项都要破，只有一种改法。每种改法是要写的值（只改到刚好越界）；已经不成立时是一个空改法，一种都做不到时为空列表。
+	/// </summary>
+	public static List<List<Write>> Violate(ConditionResultItem item)
+	{
+		var options = new List<List<Write>>();
+		var compares = item.GetFieldValue<List<StatCompareItem>>("_items");
+		if (compares == null || compares.Count == 0) return options;
+		var parts = compares.Select(ViolateCompare).ToList();
+		if (item.GetFieldValue<LogicOperatorType>("_logicOp") == LogicOperatorType.OR)
+		{
+			if (parts.Any(p => p == null)) return options;
+			var writes = new List<Write>();
+			foreach (Write w in parts.SelectMany(p => p))
+			{
+				Write same = writes.Find(x => x.Target == w.Target);
+				if (same == null) writes.Add(w);
+				else if (same.Value != w.Value) return options;
+			}
+			options.Add(writes);
+			return options;
+		}
+		options.AddRange(parts.Where(p => p != null).OrderBy(p => p.Count));
+		return options;
+	}
+
+	private static List<Write> ViolateCompare(StatCompareItem c)
+	{
+		var g1 = c.GetFieldValue<StatGroupVariable>("_value1");
+		var g2 = c.GetFieldValue<StatGroupVariable>("_value2");
+		var op = c.GetFieldValue<StatCompareType>("_compareOp");
+		int? a = Eval(g1), b = Eval(g2);
+		if (a == null || b == null) return null;
+		if (!GameStatUtils.StatCompare(a.Value, b.Value, op)) return new List<Write>();
+		if (IsConstant(g2)) return Toward(g1, a.Value, Outside(b.Value, op));
+		if (IsConstant(g1)) return Toward(g2, b.Value, Outside(a.Value, Mirror(op)));
+		return null;
+	}
+
+	// 刚好让「值 op bound」不成立的值
+	private static int? Outside(int bound, StatCompareType op)
+	{
+		switch (op)
+		{
+			case StatCompareType.Equal: return bound == 0 ? 1 : bound - 1;
+			case StatCompareType.NotEqual: return bound;
+			case StatCompareType.Less: return bound;
+			case StatCompareType.LessEqual: return bound + 1;
+			case StatCompareType.Greater: return bound;
+			case StatCompareType.GreaterEqual: return bound - 1;
+			default: return null;
+		}
 	}
 
 	private static List<Write> SatisfyCompare(StatCompareItem c)

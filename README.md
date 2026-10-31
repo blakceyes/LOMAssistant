@@ -75,7 +75,7 @@
 
   <img src="media/story-nodes.webp" width="640" alt="节点存档：按日期列出收录的剧情段，可重玩、删除">
 
-- **剧情跳转**：在路线图或剧情图里选中一段剧情，点「跳到这里」就能直接从那一段开始玩，还没走到的也行，补剧情、换条线收集结局时用。跳之前会列出一路上影响后面剧情的选择，按你选的把中间的进度补上，也可以顺便和一位女主结缘。目标那一段里按条件分的岔，默认走还有没读过对白的那一支，跳过去后先把这一支的条件补上，补不上的直接走这一支。跳之前会自动存一份随时存档，想回去随时能回去。中间的剧情没有真的玩过，偶尔会有对不上的地方，正常游玩不建议用。
+- **剧情跳转**：在路线图或剧情图里选中一段剧情，点「跳到这里」就能直接从那一段开始玩，还没走到的也行，补剧情、换条线收集结局时用。跳之前会列出一路上影响后面剧情的选择，按你选的把中间的进度补上，也可以顺便和一位女主结缘。目标那一段里按条件分的岔，默认走还有没读过对白的那一支，跳过去后直接走这一支，不改数值；打开「选分支时把数值改到符合」后，先把这一支的条件补上，补不上的再直接走。跳之前会自动存一份随时存档，想回去随时能回去。中间的剧情没有真的玩过，偶尔会有对不上的地方，正常游玩不建议用。
 
   <img src="media/story-jump.webp" width="640" alt="剧情跳转：跳之前列出会改的任务、日期、补的变化，可以顺便结缘，一路上的岔路逐个选">
 
@@ -93,6 +93,8 @@
 - **随机事件自选**（默认关）：工作、闲逛等抽随机事件时先停下，列出能触发的事件和概率，选一个就触发它，也可以按原本概率抽。还没看过的事件后面标着「没看过」。条件里带随机数的分支（如修炼时按小梅好感的几率被拉去跑步）也能选走哪条路。每个事件、每条路可设「总是」「不出」，设了会记住，关掉自选也照样生效。设置里打开「强行触发条件没满足的事件」（只有「全开」档打开）后，出现条件没满足的事件也收在下面，写明要什么条件，点了无视条件直接触发，不改旗标。
 
   <img src="media/event-picker.webp" width="480" alt="随机事件自选：列出可触发的事件、概率和变化">
+
+- **判断前选走哪一支**（默认关，只有「全开」档打开）：剧情走到按条件分支的判断时，换一支能看到没读过的对白或接到别的剧情就先停下，列出每一支的条件、现在的值、对白看过没，选哪支就走哪支：默认不改数值，只是这一次直接走过去；打开「选分支时把数值改到符合」（默认关）后，先把属性、好感、旗标改到正好走这一支，改了会一直留着，改不动的再直接走。只有一支能走、换一支也没有新内容的不停。弹出时会停住快进。
 
 - **地图建筑事件提示**：养成地图上鼠标停在建筑上，列出这里的主线、支线（能不能触发、条件）和随机事件的概率；有能触发、还没走过的任务的建筑会一直亮着。设置页打开「地图提示只列能触发的」后，只列现在进去就会触发的，其余只写个数。点进建筑后，鼠标停在挑柴、修练这些选项上，列出选这一项会抽的随机事件、概率和没看过的；外出列表里的移动、行商也一样。
 - **物品用途**（默认关，可能剧透任务名）：背包和商店的物品说明后面列出使用效果，以及哪些剧情会判定或收走它。设置页「物品说明里写用途」。
@@ -221,5 +223,5 @@ DOTNET=/path/to/dotnet ./Installer/build-installer.sh
 - **存档备注显示**：移植自 [LOM_SaveSlotExpander](https://gitlab.com/ame-chan/lom_saveslotexpander)（ame-chan，MIT 许可）。
 - **AI 陪玩的思路**：参考 [江湖夜话](https://github.com/Cpjjason/jianghu-yehua)（Cpjjason）。它也是《活侠传》的 AI Mod，能和游戏里的人物私下闲谈，人物会送东西、指点武功、记得聊过的事（[B 站介绍视频](https://www.bilibili.com/video/BV1s2nC6pE83/)）。
 - **AI 陪玩的人设**：部分性格和小习惯参考了类脑社区夏呆呆的同人角色卡《活侠传》。
-- 感谢 [lxsb222-spec](https://github.com/lxsb222-spec)（爱死）、[blakceyes](https://github.com/blakceyes)、[NEXTAltair](https://github.com/NEXTAltair)、[pluvivanto](https://github.com/pluvivanto)、[lockpick](https://github.com/lockpick) 提交的 PR，以及 [mahosalieri85-a11y](https://github.com/mahosalieri85-a11y)、[iampigcheng](https://github.com/iampigcheng) 提交的 issue。
+- 感谢 [lxsb222-spec](https://github.com/lxsb222-spec)（爱死）、[blakceyes](https://github.com/blakceyes)、[NEXTAltair](https://github.com/NEXTAltair)、[pluvivanto](https://github.com/pluvivanto)、[lockpick](https://github.com/lockpick)、[F1-ZX](https://github.com/F1-ZX) 提交的 PR，以及 [mahosalieri85-a11y](https://github.com/mahosalieri85-a11y)、[iampigcheng](https://github.com/iampigcheng) 提交的 issue。
 - 下载包附带的 [BepInEx](https://github.com/BepInEx/BepInEx)、[UnityDoorstop](https://github.com/NeighTools/UnityDoorstop)、[Newtonsoft.Json](https://github.com/JamesNK/Newtonsoft.Json) 按各自的许可证分发。

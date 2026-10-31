@@ -368,7 +368,7 @@ public static class StoryJump
 
 	/// <summary>
 	/// 目标这一段里看条件分的岔（分支判断）：没读过的对白在哪一支，默认走哪一支（玩家可以改，或选「按游戏判断」）。
-	/// 跳过去以后这一段判断到它时，先把这一支的条件补上，补不上的（随机、物品、时间）直接走这一支，见 JumpArms。
+	/// 跳过去以后这一段判断到它时，先把这一支的条件补上，补不上的（随机、物品、时间）直接走这一支，见 BranchOverride。
 	/// </summary>
 	private static void TargetBranches(Plan plan)
 	{
@@ -398,7 +398,8 @@ public static class StoryJump
 		foreach (string name in order)
 		{
 			Dictionary<int, int> count = arms[name];
-			if (!count.Values.Any(n => n > 0))
+			// 老写法的剧本每一支都记成 0，分不出哪句属于哪一支，不猜
+			if (!count.Values.Any(n => n > 0) || count.Keys.All(a => a == 0))
 			{
 				continue;
 			}
@@ -683,7 +684,7 @@ public static class StoryJump
 			player.SetGameTime(r / 36 + 1, r % 36 / 3 + 1, (MonthStageType)(r % 3 + 1));
 		}
 		missions.SetKey(plan.Mission.Main ? "Main" : plan.Mission.Series, plan.Mission.Key);
-		JumpArms.Set(plan.Arms);
+		BranchOverride.Set(plan.Arms);
 		ReturnSave = back;
 		ReturnTitle = plan.Title;
 		NoteOpen = true;
@@ -738,82 +739,12 @@ public static class StoryJump
 		{
 			return;
 		}
-		JumpArms.Set(null);
+		BranchOverride.Set(null);
 		LOMAssistant.Features.AnytimeSave.AnytimeSave.Instance.LoadFile(ReturnSave);
 		NoteOpen = false;
 	}
 
 	public static bool Enabled => ConfigManager.EnableStoryJump.Value;
-}
-
-/// <summary>
-/// 跳过去以后，目标那一段里的分支判断按确认页选的那一支走：判断到它时先把这一支的条件补上（属性、好感、旗标，同「一键设置」），
-/// 补不上的（随机、物品、时间，或前面的一支也成立）直接给这一支的结果。每个判断只管一次，回到地图、读档后作废。
-/// </summary>
-internal static class JumpArms
-{
-	private static readonly Dictionary<string, int> Arms = new Dictionary<string, int>(StringComparer.Ordinal);
-	private static bool _hooked;
-
-	public static void Set(Dictionary<string, int> arms)
-	{
-		Arms.Clear();
-		if (arms != null)
-		{
-			foreach (var pair in arms)
-			{
-				Arms[pair.Key] = pair.Value;
-			}
-		}
-		if (!_hooked)
-		{
-			_hooked = true;
-			UnityEngine.SceneManagement.SceneManager.activeSceneChanged += (from, to) =>
-			{
-				if (to.name != "Story")
-				{
-					Arms.Clear();
-				}
-			};
-		}
-	}
-
-	[HarmonyLib.HarmonyPostfix]
-	[HarmonyLib.HarmonyPatch(typeof(SwitchResultData), nameof(SwitchResultData.Execute))]
-	public static void Execute_Postfix(SwitchResultData __instance, ref int __result)
-	{
-		try
-		{
-			if (Arms.Count == 0 || !Arms.TryGetValue(__instance.name, out int arm) || LOMAssistant.Features.AnytimeSave.AnytimeSave.Replaying)
-			{
-				return;
-			}
-			Arms.Remove(__instance.name);
-			bool byCount = __instance.GetFieldValue<bool>("_useCount");
-			int arms = byCount ? __instance.GetFieldValue<List<ValueCompareItem>>("_countItems").Count : __instance.GetFieldValue<List<ConditionResultItem>>("_items").Count;
-			int want = arm == 0 || arm > arms ? arms + 1 : arm;
-			if (__result == want)
-			{
-				return;
-			}
-			string how = "直接走这一支";
-			if (!byCount && want <= arms)
-			{
-				ConditionResultItem item = __instance.GetFieldValue<List<ConditionResultItem>>("_items")[want - 1];
-				List<ConditionSolver.Write> writes = ConditionSolver.Satisfy(item);
-				if (writes != null && writes.All(ConditionSolver.Apply))
-				{
-					how = "补上条件：" + string.Join("，", writes.Select(w => w.Target + "=" + w.Value).ToArray());
-				}
-			}
-			FileLogger.Log($"[剧情跳转] {__instance.name}：游戏判断第 {__result} 支，按选的走第 {want} 支，{how}");
-			__result = want;
-		}
-		catch (Exception ex)
-		{
-			FileLogger.LogWarning("[剧情跳转] 按选的分支走失败，照游戏判断: " + ex.Message);
-		}
-	}
 }
 
 /// <summary>

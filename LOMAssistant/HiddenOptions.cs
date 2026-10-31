@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Fungus;
 using HarmonyLib;
+using MoonSharp.Interpreter;
 using LOMAssistant.Config;
 using LOMAssistant.LuaParse;
 
@@ -13,6 +14,8 @@ namespace LOMAssistant;
 /// - 对话选项（"O_…"）：换成锁住的写法（"~O_…"），和游戏本来就锁住的选项一样写出条件，旁边是「一键设置」或「强行解锁」。
 /// - 议题、闲聊这类菜单（"类型+O_…+行动+贡献"）：游戏不显示锁住的项，就直接放出来能选，后果说明前面红字写「条件没满足」，条件在悬停提示里。
 /// 选了会改掉自己条件里旗标的（问过就不再出现的话题）不放，免得菜单里堆一堆用过的选项。
+/// 放不放要看当时的旗标，所以剧本里只改成「条件 and 选项 or (lomhidden(编号, 条件) and 放回的写法 or "~x")」，
+/// 剧本改出来的样子固定；lomhidden 是随时存档会记下结果的查询（见 AnytimeSave.Queries），回退、读随时存档回放时用记下的结果，菜单和当时一样。
 /// </summary>
 internal static class HiddenOptions
 {
@@ -58,17 +61,24 @@ internal static class HiddenOptions
 	[HarmonyPrefix]
 	[HarmonyPriority(Priority.Normal - 1)]
 	[HarmonyPatch(typeof(LuaEnvironment), "LoadLuaFunction")]
-	public static void LoadLuaFunction_Prefix(ref string luaString, string friendlyName)
+	public static void LoadLuaFunction_Prefix(LuaEnvironment __instance, ref string luaString, string friendlyName)
 	{
 		try
 		{
+			// 剧本跑到菜单时问：这一项放不放回来（打开了设置、而且不是已经选过的）
+			__instance.Interpreter.Globals["lomhidden"] = DynValue.NewCallback((c, a) => DynValue.NewBoolean(
+				a.Count > 1 && ConfigManager.ForceUnmetOptions.Value && !UsedUp(a[0].String, a[1].String)));
 			// 对话里零碎执行的小段 Lua 不含选项菜单，不能把当前剧本的记录清掉（同锁住选项）
 			if (friendlyName == null || friendlyName.StartsWith("tmp.") || luaString == null || !luaString.Contains("setmenudialog"))
 			{
 				return;
 			}
 			Forced.Clear();
-			if (!ConfigManager.ForceUnmetOptions.Value || !luaString.Contains("\"~x\""))
+			// 读随时存档回放时按存档时开没开改写，不看现在的设置：改写多出来的查询要和执行记录一一对上
+			var anytime = LOMAssistant.Features.AnytimeSave.AnytimeSave.Instance;
+			bool on = anytime != null && (LOMAssistant.Features.AnytimeSave.AnytimeSave.Restoring || LOMAssistant.Features.AnytimeSave.AnytimeSave.Replaying)
+				? anytime.LoadingHiddenOptions : ConfigManager.ForceUnmetOptions.Value;
+			if (!on || !luaString.Contains("\"~x\""))
 			{
 				return;
 			}
@@ -78,21 +88,24 @@ internal static class HiddenOptions
 				conditions[m.Groups[1].Value] = m.Groups[2].Value;
 			}
 			var shown = new List<string>();
+			var locked = new Dictionary<string, string>();
 			string result = Gated.Replace(luaString, m =>
 			{
 				string variable = m.Groups[1].Value, value = m.Groups[2].Value;
 				Match key = OptionKey.Match(value);
-				if (!key.Success || !conditions.TryGetValue(variable, out string condition) || UsedUp(key.Value, condition))
+				if (!key.Success || !conditions.TryGetValue(variable, out string condition))
 				{
 					return m.Value;
 				}
 				shown.Add(key.Value);
+				string ask = "lomhidden(\"" + key.Value + "\", \"" + condition + "\")";
 				if (value.Contains("+"))
 				{
 					Forced[key.Value] = condition;
-					return variable + " and \"" + value + "\" or \"" + value + "\"";
+					return variable + " and \"" + value + "\" or (" + ask + " and \"" + value + "\" or \"~x\")";
 				}
-				return variable + " and \"" + value + "\" or \"~" + key.Value + "\"";
+				locked[key.Value] = condition;
+				return variable + " and \"" + value + "\" or (" + ask + " and \"~" + key.Value + "\" or \"~x\")";
 			});
 			if (shown.Count == 0)
 			{
@@ -101,9 +114,12 @@ internal static class HiddenOptions
 			_changedFrom = luaString;
 			_changedTo = result;
 			luaString = result;
-			// 换成锁住写法的对话选项要让「一键设置」认得：按改过的剧本重新找一遍锁住的选项
-			LuaParser.Instance.ExtractLockedOptions(friendlyName + "#hidden#" + result.Length + "#" + result.GetHashCode(), result);
-			FileLogger.Log("[强行选项] " + friendlyName + " 放回 " + shown.Count + " 个条件没满足的选项：" + string.Join("，", shown.ToArray()));
+			// 换成锁住写法的对话选项要让「一键设置」「强行解锁」认得
+			foreach (var pair in locked)
+			{
+				LuaParser.Instance.LockedOptions[pair.Key] = (pair.Value, pair.Key);
+			}
+			FileLogger.Log("[强行选项] " + friendlyName + " 有 " + shown.Count + " 个条件没满足就不出现的选项，到菜单时看要不要放回：" + string.Join("，", shown.ToArray()));
 		}
 		catch (System.Exception ex)
 		{

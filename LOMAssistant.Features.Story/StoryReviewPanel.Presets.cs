@@ -54,6 +54,7 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableEventPicker, false),
 				(ConfigManager.ForceUnmetEvents, false),
 				(ConfigManager.ForceUnmetOptions, false),
+				(ConfigManager.EnableBranchPicker, false),
 				(ConfigManager.EnableOneClickUnlock, false),
 				(ConfigManager.EnableOptionInfo, false),
 				(ConfigManager.ShowItemUses, false),
@@ -81,6 +82,7 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableEventPicker, false),
 				(ConfigManager.ForceUnmetEvents, false),
 				(ConfigManager.ForceUnmetOptions, false),
+				(ConfigManager.EnableBranchPicker, false),
 				(ConfigManager.EnableOneClickUnlock, true),
 				(ConfigManager.EnableOptionInfo, true),
 				(ConfigManager.ShowItemUses, false),
@@ -100,7 +102,7 @@ public partial class StoryReviewPanel
 		{
 			Name = "全开",
 			Tagline = "建议补全剧情的老玩家选择",
-			Note = "在「辅助」之上再打开分支小窗、旗标提示、随机事件自选、决斗敌方行动预测、四师兄卖全部物品、剧情跳转、强行触发条件没满足的事件和选项，以及战斗无敌等作弊",
+			Note = "在「辅助」之上再打开分支小窗、旗标提示、随机事件自选、判断前选走哪一支、决斗敌方行动预测、四师兄卖全部物品、剧情跳转、强行触发条件没满足的事件和选项，以及战斗无敌等作弊",
 			Values = new (IConfigElement, object)[]
 			{
 				(ConfigManager.ShowBranchChecks, true),
@@ -108,6 +110,7 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableEventPicker, true),
 				(ConfigManager.ForceUnmetEvents, true),
 				(ConfigManager.ForceUnmetOptions, true),
+				(ConfigManager.EnableBranchPicker, true),
 				(ConfigManager.EnableOneClickUnlock, true),
 				(ConfigManager.EnableOptionInfo, true),
 				(ConfigManager.ShowItemUses, true),

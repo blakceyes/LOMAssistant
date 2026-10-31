@@ -59,6 +59,10 @@ public static class ConfigManager
 
 	public static ConfigElement<bool> ForceUnmetEvents;
 
+	public static ConfigElement<bool> EnableBranchPicker;
+
+	public static ConfigElement<bool> BranchChangeValues;
+
 	public static ConfigElement<bool> ForceUnmetOptions;
 	public static ConfigElement<bool> EnableMapHints;
 	public static ConfigElement<bool> ShowItemUses;
@@ -401,6 +405,8 @@ public static class ConfigManager
 		MapHintsNowOnly = new ConfigElement<bool>("MapHintsNowOnly", "地图建筑事件提示只列现在点进去就会触发的主线、支线，时间不对、条件不满足的只写个数；随机事件本来就只列现在能抽到的。true=开，false=关", defaultValue: false);
 		EnableEventPicker = new ConfigElement<bool>("EnableEventPicker", "随机事件自选：剧情走到随机事件（工作、闲逛等）时先停下，列出满足条件的事件选一个，也可以选随机。true=开，false=关", defaultValue: false);
 		ForceUnmetEvents = new ConfigElement<bool>("ForceUnmetEvents", "随机事件自选里也列出出现条件没满足的事件，点了无视条件直接触发（不改旗标，之后的剧情可能对不上）。true=开，false=关", defaultValue: false);
+		EnableBranchPicker = new ConfigElement<bool>("EnableBranchPicker", "判断前选走哪一支：剧情走到按条件分支的判断时，换一支能看到没读过的对白或接到别的剧情就先停下，列出每一支的条件、现在的值、对白看过没，选哪支就走哪支（先改数值，改不动直接走）。true=开，false=关", defaultValue: false);
+		BranchChangeValues = new ConfigElement<bool>("BranchChangeValues", "选分支时把数值改到符合：判断前选走哪一支、剧情跳转按选的分支走时，先把属性、好感、旗标改到正好走这一支（改了会一直留着），改不动的再直接走。关掉时不改数值，只是这一次直接走过去。true=开，false=关", defaultValue: false);
 		ForceUnmetOptions = new ConfigElement<bool>("ForceUnmetOptions", "条件不满足就不出现的选项也列出来（红字标「条件没满足」，悬停看条件），点了直接选；锁住的选项条件改不到时给「强行解锁」（都不改旗标，之后的剧情可能对不上）。true=开，false=关", defaultValue: false);
 		EnableDuelActionForecast = new ConfigElement<bool>("EnableDuelActionForecast", "决斗中显示敌方本回合预选的行动；敌方意图较高时可能根据你的出招临场应变。默认关。true=开，false=关", defaultValue: false);
 		DuelForecastX = new ConfigElement<float>("DuelForecastX", "决斗敌方行动预测窗口的横向位置（占屏幕宽度的比例，-1=默认靠右）。拖动窗口会自动保存", -1f);

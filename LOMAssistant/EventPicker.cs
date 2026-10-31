@@ -17,6 +17,7 @@ namespace LOMAssistant;
 /// 随机事件自选：剧本走到 checkpointmanager.Position（工作、闲逛等按权重抽一个事件）时先停下，
 /// 列出这次满足条件的事件，选一个就触发它，也可以选「随机」照游戏原本的概率抽。
 /// 出现条件没满足的事件折叠在下面（写明要什么条件），点了也照样触发。
+/// 不带随机值的分支判断，打开「判断前选走哪一支」时也在这里停下，列出每一支的条件、对白看过没（见 BranchPicker）。
 /// 条件里带随机值的分支判断（checkpointmanager.Switch，比如飞天门修炼时「随机值 ≤ 小梅好感」就被小梅拉去跑步）也一样停下，
 /// 列出这次能走到的几条路和概率，选哪条就把这次判断里的随机值定成让它成立的数（其他条件照常判断，见 SwitchRandom）。
 /// 停下的办法参考赵活系统（Toufff，MIT）：把剧本里的调用包一层，在 Lua 协程里等待，选完再执行原调用。
@@ -47,6 +48,14 @@ public class EventPicker : MonoBehaviour
 
 	public static bool IsWaiting => _state == State.Waiting;
 
+	/// <summary>选择框开着：Esc、手柄、右键归它用，不交给游戏（见 InputGuard），也不替玩家选，一定要在框里选一项。</summary>
+	/// <summary>关掉的那一帧也算：游戏的对话框可能比本 Mod 晚一步读到同一下按键。</summary>
+	public static bool OwnsEscape => (_state == State.Waiting && Choices.Count > 0) || Time.frameCount == _closedFrame;
+
+	private static int _closedFrame = -1;
+
+
+
 	private class Choice
 	{
 		public PositionEventData Data;
@@ -68,6 +77,8 @@ public class EventPicker : MonoBehaviour
 
 	/// <summary>正在问的是分支判断（不是事件池）时，判断名。</summary>
 	private static string _switch;
+	/// <summary>正在问的是「判断前选走哪一支」（不带随机值的分支判断），Choice.Forced 是第几支。</summary>
+	private static bool _branchMode;
 
 	private float _scale = -1f;
 	private int _fontMode = -1;
@@ -93,6 +104,7 @@ public class EventPicker : MonoBehaviour
 		_state = State.Idle;
 		_pool = null;
 		_switch = null;
+		_branchMode = false;
 		Choices.Clear();
 		Pending = null;
 		_pendingUnmet = false;
@@ -125,6 +137,7 @@ public class EventPicker : MonoBehaviour
 			_state = State.Idle;
 			_pool = null;
 			_switch = null;
+			_branchMode = false;
 			Choices.Clear();
 		}
 	}
@@ -187,7 +200,9 @@ public class EventPicker : MonoBehaviour
 			_state = State.Waiting;
 			_pool = pool;
 			_switch = null;
+			_branchMode = false;
 			HighlightDefault();
+			StopSkip();
 			FileLogger.Log($"[事件自选] {pool}：{Choices.Count} 个可触发事件，等待选择");
 			return true;
 		}
@@ -224,7 +239,10 @@ public class EventPicker : MonoBehaviour
 		_highlight = always >= 0 ? always : RandomSlot;
 	}
 
-	/// <summary>剧本每帧问一次：这个分支判断要不要停下来等选（条件里有随机值、能走到两条以上的路才问）。</summary>
+	/// <summary>
+	/// 剧本每帧问一次：这个分支判断要不要停下来等选。条件里有随机值、能走到两条以上的路时按「随机事件自选」问；
+	/// 不带随机值的按「判断前选走哪一支」问（换一支有新内容才问）。
+	/// </summary>
 	private static bool WaitSwitch(string name, string script)
 	{
 		string pool = "switch:" + name;
@@ -239,16 +257,17 @@ public class EventPicker : MonoBehaviour
 				_state = State.Idle;
 				_pool = null;
 				_switch = null;
+				_branchMode = false;
 				return false;
 			}
-			if (_instance == null || !ConfigManager.EnableEventPicker.Value || AnytimeSave.Replaying || AnytimeSave.Restoring)
+			if (_instance == null || AnytimeSave.Replaying || AnytimeSave.Restoring)
 			{
 				return false;
 			}
-			List<SwitchRandom.Arm> arms = SwitchRandom.Arms(name);
+			List<SwitchRandom.Arm> arms = ConfigManager.EnableEventPicker.Value ? SwitchRandom.Arms(name) : null;
 			if (arms == null || arms.Count < 2)
 			{
-				return false;
+				return SwitchRandom.Arms(name) == null && BranchPicker.Enabled && WaitBranch(name, script, pool);
 			}
 			Choices.Clear();
 			foreach (SwitchRandom.Arm arm in arms)
@@ -259,7 +278,9 @@ public class EventPicker : MonoBehaviour
 			_state = State.Waiting;
 			_pool = pool;
 			_switch = name;
+			_branchMode = false;
 			HighlightDefault();
+			StopSkip();
 			FileLogger.Log($"[分支自选] {name}：{Choices.Count} 条路，等待选择");
 			return true;
 		}
@@ -268,14 +289,70 @@ public class EventPicker : MonoBehaviour
 			FileLogger.LogWarning("[分支自选] 读取分支判断失败，按原本随机: " + ex.Message);
 			_state = State.Idle;
 			_switch = null;
+			_branchMode = false;
 			Choices.Clear();
 			return false;
 		}
 	}
 
+	// 判断前选走哪一支：每一支写成「第几支　会走这一支　看过没」，下面一行是条件（满不满足、现在的值）和接到哪里
+	private static bool WaitBranch(string name, string script, string pool)
+	{
+		List<BranchPicker.Arm> arms = BranchPicker.Arms(name, script, out int predicted);
+		if (arms == null || !BranchPicker.Worth(arms, predicted))
+		{
+			return false;
+		}
+		Choices.Clear();
+		int fallback = arms.Count;
+		foreach (BranchPicker.Arm arm in arms)
+		{
+			string label = (arm.Branch == fallback ? "以上条件都不满足" : $"第 {arm.Branch} 支") + (arm.Branch == predicted ? "　<color=#A3302A>会走这一支</color>" : "") + "　" + BranchPicker.ReadState(arm);
+			string mark = arm.Holds == true ? RichText.Green("满足") + "　" : arm.Holds == false ? RichText.Red("不满足") + "　" : "";
+			string detail = arm.Branch == fallback ? "" : mark + arm.Condition;
+			if (arm.Exit.Length > 0)
+			{
+				detail += (detail.Length > 0 ? "\n" : "") + arm.Exit;
+			}
+			Choices.Add(new Choice { Key = SwitchRandom.RuleKey(name, arm.Branch), Forced = arm.Branch, Name = label, Effects = detail });
+		}
+		_state = State.Waiting;
+		_pool = pool;
+		_switch = name;
+		_branchMode = true;
+		_highlight = RandomSlot;
+		StopSkip();
+		FileLogger.Log($"[分支] {name}：{arms.Count} 支，游戏会走第 {predicted} 支，等待选择");
+		return true;
+	}
+
+	// 弹出选择框时停住快进（按住 Ctrl、一键快进已读），选完要看的剧情不会被快进带过去
+	private static void StopSkip()
+	{
+		try
+		{
+			if (SceneManager.GetActiveScene().name == "Story" && StoryManager.Instance != null)
+			{
+				StoryManager.Instance.SkipDialog(false);
+			}
+		}
+		catch (System.Exception ex)
+		{
+			FileLogger.LogWarning("[事件自选] 停住快进失败: " + ex.Message);
+		}
+	}
+
 	private static void Choose(Choice choice)
 	{
-		if (_switch != null)
+		if (_switch != null && _branchMode)
+		{
+			if (choice != null)
+			{
+				BranchOverride.Set(_switch, choice.Forced);
+			}
+			FileLogger.Log("[分支] " + _switch + "：" + (choice == null ? "按游戏判断" : "走第 " + choice.Forced + " 支"));
+		}
+		else if (_switch != null)
 		{
 			SwitchRandom.Pending = choice == null ? null : (_switch, choice.Forced);
 			FileLogger.Log("[分支自选] " + _switch + "：" + (choice == null ? "随机" : choice.Name));
@@ -287,6 +364,7 @@ public class EventPicker : MonoBehaviour
 			FileLogger.Log("[事件自选] " + _pool + "：" + (choice == null ? "随机" : DataHelper.GetEventName(choice.Data) + (choice.Unmet ? "（条件没满足）" : "")));
 		}
 		_state = State.Released;
+		_closedFrame = Time.frameCount;
 		Choices.Clear();
 	}
 
@@ -436,6 +514,8 @@ public class EventPicker : MonoBehaviour
 		{
 			return;
 		}
+		// 剧情的黑屏淡入淡出是 Fungus 在 GUI.depth -1000 画的一整张黑图：判断常在淡入前，窗口要画在它上面，不然被黑屏盖住像卡死
+		GUI.depth = -2000;
 		if (ModFont.NeedsRebuild(scale, _scale, _fontMode) || _dark != PanelTheme.Dark || _opacity != PanelTheme.DialogOpacity)
 		{
 			BuildStyles(scale);
@@ -457,6 +537,10 @@ public class EventPicker : MonoBehaviour
 	private static string Label(int i, int total)
 	{
 		Choice c = Choices[i];
+		if (_branchMode)
+		{
+			return (i < 9 ? (i + 1) + ". " : "") + c.Name;
+		}
 		if (c.Unmet)
 		{
 			return c.Name + "　<color=#73644F>条件没满足</color>" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
@@ -482,7 +566,7 @@ public class EventPicker : MonoBehaviour
 
 	private void DrawChoices()
 	{
-		GUILayout.Label(_switch != null ? "这次走哪条路" : "这次触发哪个事件", _title);
+		GUILayout.Label(_branchMode ? "这次走哪一支" : _switch != null ? "这次走哪条路" : "这次触发哪个事件", _title);
 		int met = Met;
 		var metKeys = Choices.Where(x => !x.Unmet).Select(x => x.Key).ToList();
 		int total = Choices.Where(c => !c.Unmet).Sum(c => EventRules.EffectiveRate(c.Key, c.Rate, metKeys));
@@ -529,12 +613,16 @@ public class EventPicker : MonoBehaviour
 			{
 				ScrollTo(GUILayoutUtility.GetLastRect(), viewHeight);
 			}
-			// 条件没满足的不参与随机，不给「总是」「不出」
-			if (c.Unmet)
+			// 条件没满足的不参与随机、选分支不是抽随机，都不给「总是」「不出」
+			if (c.Unmet || _branchMode)
 			{
 				GUILayout.Space(ruleWidth * 2f + _rule.margin.left * 2f);
 				GUILayout.EndHorizontal();
-				GUILayout.Label(c.Effects, _effects);
+				// 没有说明的（「以上条件都不满足」那支）不画空行：算高度时也没算它，画了就多出滚动条
+				if (!string.IsNullOrEmpty(c.Effects))
+				{
+					GUILayout.Label(c.Effects, _effects);
+				}
 				continue;
 			}
 			// 「总是」：以后这里能抽到它就直接触发它；「不出」：以后不会抽到它。再点一次取消
@@ -559,7 +647,8 @@ public class EventPicker : MonoBehaviour
 		}
 		GUILayout.EndScrollView();
 		GUILayout.Space(6f * _scale);
-		if (GUILayout.Button(Choices.Any(c => !c.Unmet && EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）", _highlight == RandomSlot ? _randomHighlighted : _random))
+		string bottom = _branchMode ? "按游戏判断" : Choices.Any(c => !c.Unmet && EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）";
+		if (GUILayout.Button(bottom, _highlight == RandomSlot ? _randomHighlighted : _random))
 		{
 			Choose(null);
 			GUIUtility.ExitGUI();

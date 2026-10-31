@@ -97,7 +97,8 @@ public partial class AnytimeSave
 				randomJson = JsonUtility.ToJson(Random.state),
 				music = CurrentSound("_currentMusic"), envSound = CurrentSound("_currentEnvSound"), musicVolume = CurrentVolume("BackgroundMusic"), envVolume = CurrentVolume("EnvSound"),
 				visibleCharacters = VisibleCharacters(),
-				dice = new DiceState()
+				dice = new DiceState(),
+				hiddenOptions = LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value
 			};
 		}
 		catch (System.Exception e)

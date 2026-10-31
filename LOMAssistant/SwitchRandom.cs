@@ -34,7 +34,7 @@ internal static class SwitchRandom
 
 	internal static string RuleKey(string name, int branch) => "Switch:" + name + "#" + branch;
 
-	private static SwitchResultData Find(string name)
+	internal static SwitchResultData Find(string name)
 	{
 		foreach (SwitchResultConfig config in DataHelper.SwitchConfigs())
 		{
@@ -213,7 +213,7 @@ internal static class SwitchRandom
 	}
 
 	// 剧情段的名字：有剧情记录用记录，没有就用它的第一句台词（剧本名玩家看不懂）
-	private static string Segment(string script)
+	internal static string Segment(string script)
 	{
 		string name = StoryScripts.SegmentName(script);
 		if (name != script)

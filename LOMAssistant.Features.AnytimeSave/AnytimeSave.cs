@@ -48,6 +48,8 @@ public class SaveFile
 	public List<ScriptStamp> scripts = new List<ScriptStamp>();
 	public DiceState dice;
 	public FreeRng freeRng;
+	/// <summary>存档时开着「强行选条件没满足的选项」：剧本里带条件的选项改写过（见 HiddenOptions），回放时要照样改写，执行记录才对得上。以前的存档没有，是 false。</summary>
+	public bool hiddenOptions;
 }
 [Serializable] public class Envelope { public string sha256, payload; }
 
@@ -75,10 +77,13 @@ public partial class AnytimeSave : MonoBehaviour
 	}
 	internal static string StoreRoot => Path.Combine(SaveRoot, "AnytimeSave");
 
+	/// <summary>正在读的随时存档存的时候开着「强行选条件没满足的选项」。</summary>
+	internal bool LoadingHiddenOptions => loading != null && loading.hiddenOptions;
+
 	private static readonly MethodInfo ApplyData = AccessTools.Method(typeof(SaveSystem), "ExecuteLoadGameData");
 	private static readonly HashSet<string> Queries = new HashSet<string> {
 		"checkpointmanager.Switch", "checkpointmanager.Condition", "checkpointmanager.Position", "checkpointmanager.Dice",
-		"luamanager.GetStatData", "luamanager.GetFlagData", "luamanager.GetTempScript", "luamanager.GetCurrentTravelScript", "luamanager.GetStoryText", "math.random" };
+		"luamanager.GetStatData", "luamanager.GetFlagData", "luamanager.GetTempScript", "luamanager.GetCurrentTravelScript", "luamanager.GetStoryText", "math.random", "lomhidden" };
 	private static readonly HashSet<string> Mutators = new HashSet<string> {
 		"luamanager.SetGameTime", "luamanager.SetGameDayEnvironment", "luamanager.NextMonth", "luamanager.NextRound",
 		"luamanager.SetCurrentTravelScript", "luamanager.SetTempScript", "luamanager.SetMissionTime", "luamanager.SetTitlePartner",
@@ -414,6 +419,7 @@ public partial class AnytimeSave : MonoBehaviour
 				visibleCharacters = VisibleCharacters(),
 				target = active, preview = Preview(), gameTime = GameTimeText(),
 				dice = CaptureDice(),
+				hiddenOptions = LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value,
 				freeRng = SceneName == "Free" ? CaptureFreeRng() : null,
 				trace = SceneName == "Story" ? trace.Take(active + 1).ToList() : new List<Entry>(),
 				scripts = new List<ScriptStamp>(stamps)
