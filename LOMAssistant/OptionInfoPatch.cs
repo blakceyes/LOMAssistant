@@ -445,8 +445,36 @@ internal static class OptionInfoPatch
 		LogCheckpoint("触发剧情分支检查点:", fieldValue);
 	}
 
-	// 地点对白后面接的「(可触发：…)」：游戏是繁体时接的是繁体
-	private static bool IsTriggerHint(string text) => text.Contains("可触发：") || text.Contains("可觸發：") || text.Contains("발생 가능:") || text.Contains("発生可能：");
+	// 地点对白后面接的「(可触发：…)」：按译表识别各语言，切换语言后也能清除旧提示。
+	private static bool IsTriggerHint(string text)
+	{
+		if (text.Contains("可触发：") || text.Contains("可觸發："))
+		{
+			return true;
+		}
+		// 只查这条句式，不为识别提示初始化各语言词典或读取英文补丁文件。
+		return Array.Exists(new[] { UiText.Korean, UiText.Japanese, UiText.English }, language =>
+		{
+			string format = UiText.TableTranslation("可触发：{0}", language);
+			return !string.IsNullOrEmpty(format) && text.Contains(format.Replace("{0}", "").TrimEnd());
+		});
+	}
+
+	// 任务标题本身也可能带括号，只移除包含触发提示的那层，保留原对白中的括号。
+	private static string RemoveTriggerHint(string text)
+	{
+		if (!string.IsNullOrEmpty(text))
+		{
+			for (int start = text.LastIndexOf('('); start > 0; start = text.LastIndexOf('(', start - 1))
+			{
+				if (IsTriggerHint(text.Substring(start)))
+				{
+					return text.Substring(0, start);
+				}
+			}
+		}
+		return text;
+	}
 
 	private static void HandleDialogChange(PositionController instance, bool addSuffix, string suffix = "")
 	{
@@ -457,14 +485,7 @@ internal static class OptionInfoPatch
 			string text = dialog.GetFieldValue<string>("_dialog");
 			if (addSuffix)
 			{
-				if (IsTriggerHint(text))
-				{
-					int num = text.LastIndexOf("(");
-					if (num > 0)
-					{
-						text = text.Substring(0, num);
-					}
-				}
+				text = RemoveTriggerHint(text);
 				_originalDialogKey = text;
 				_positionCtrl = instance;
 				string text2 = LocalizationManager.Instance.LocaleResolver.GetString("Position/Dialog/" + text);
@@ -475,14 +496,7 @@ internal static class OptionInfoPatch
 				dialog.SetPrivateField("_dialog", text2 + "(" + TextConverter.ForDisplay(suffix) + ")");
 				return;
 			}
-			if (!string.IsNullOrEmpty(_originalDialogKey) && IsTriggerHint(_originalDialogKey))
-			{
-				int num2 = _originalDialogKey.LastIndexOf("(");
-				if (num2 > 0)
-				{
-					_originalDialogKey = _originalDialogKey.Substring(0, num2);
-				}
-			}
+			_originalDialogKey = RemoveTriggerHint(_originalDialogKey);
 			dialog.SetPrivateField("_dialog", _originalDialogKey);
 			_positionCtrl = null;
 			_originalDialogKey = string.Empty;

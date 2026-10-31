@@ -47,23 +47,33 @@ public static class UiText
 	private const string TagPattern = @"</?(?:b|i|size|color|material|quad)(?:[= ][^<>]*)?>";
 	private static readonly Regex Tags = new Regex("(" + TagPattern + ")");
 	private static readonly Regex Tag = new Regex("^" + TagPattern + "$");
-	private static readonly Regex Separators = new Regex(@"(\n| · |　·　|　+| {2,}|・| → )");
+	private static readonly Regex Sections = new Regex(@"(\n| · |　·　|　+| → )");
+	private static readonly Regex Separators = new Regex(@"( {2,}|・|、)");
 	private static readonly Regex Han = new Regex(@"[一-鿿]");
 	private static readonly char[] Blank = { ' ', '　', '\n', '\r', '\t' };
 
-	private static string Segment(string text, Lang lang)
+	private static string Segment(string text, Lang lang, int depth = 0)
 	{
-		string found = Whole(text, lang);
+		string found = Whole(text, lang, depth);
 		if (found != null)
 		{
 			return found;
 		}
-		string[] parts = Separators.Split(text);
+		// 先分开外层段落，保留「（要 …）」等句式内部的空格；名称也可能带顿号，要先完整识别。
+		string[] parts = Sections.Split(text);
+		if (parts.Length <= 1)
+		{
+			foreach (var (pattern, replace) in lang.Names)
+			{
+				text = pattern.Replace(text, replace);
+			}
+			parts = Separators.Split(text);
+		}
 		if (parts.Length <= 1)
 		{
 			return Words(text, lang);
 		}
-		return string.Concat(parts.Select(part => Whole(part, lang) ?? Words(part, lang)));
+		return string.Concat(parts.Select(part => depth < 8 && part.Length < text.Length ? Segment(part, lang, depth + 1) : Words(part, lang)));
 	}
 
 	// 最后一步：只换日期和常见的界面词
@@ -73,7 +83,7 @@ public static class UiText
 		{
 			return text;
 		}
-		foreach (var (pattern, replace) in lang.Words)
+		foreach (var (pattern, replace) in lang.Names.Concat(lang.Words))
 		{
 			text = pattern.Replace(text, replace);
 		}
@@ -96,11 +106,11 @@ public static class UiText
 				Match m = pattern.Match(core);
 				if (m.Success)
 				{
-					// 参数也可能是句式；只递归更短的原文，最多再查八层，避免循环匹配。
+					// 参数也可能是由句式或名称拼成的列表，复用分段翻译；只递归更短的原文，最多再查八层。
 					found = string.Format(format, m.Groups.Cast<Group>().Skip(1).Select(g => (object)(
 						lang.Exact.TryGetValue(g.Value, out string part) || lang.Game.TryGetValue(g.Value, out part)
 							? part
-							: (depth < 8 && g.Length < core.Length ? Whole(g.Value, lang, depth + 1) : null) ?? Words(g.Value, lang))).ToArray());
+							: depth < 8 && g.Length < core.Length ? Segment(g.Value, lang, depth + 1) : Words(g.Value, lang))).ToArray());
 					break;
 				}
 			}
@@ -200,6 +210,7 @@ public static class UiText
 	{
 		public readonly Dictionary<string, string> Exact = new Dictionary<string, string>();
 		public readonly List<(Regex, string)> Patterns = new List<(Regex, string)>();
+		public readonly List<(Regex, MatchEvaluator)> Names = new List<(Regex, MatchEvaluator)>();
 		public readonly List<(Regex, MatchEvaluator)> Words = new List<(Regex, MatchEvaluator)>();
 		public readonly Dictionary<string, string> Cache = new Dictionary<string, string>();
 		// 英语：英文补丁（velvetcakes）的翻译文件，查来自游戏的文字；本 Mod 自己的表优先
@@ -211,12 +222,12 @@ public static class UiText
 			string[][] conditions = NameColumn(UiConditionNames.Table, column);
 			if (conditions.Length > 0)
 			{
-				Words.Add(ConditionNames(conditions));
+				Names.Add(ConditionNames(conditions));
 			}
 			string[][] flags = NameColumn(UiFlagNames.Table, column);
 			if (flags.Length > 0)
 			{
-				Words.Add(FlagNames(flags));
+				Names.Add(FlagNames(flags));
 			}
 			Words.Add(ChineseNumeralDates);
 			foreach (var (pattern, korean, japanese, english) in ActionWords)
@@ -280,6 +291,17 @@ public static class UiText
 
 	// 缺列和 null 都表示未翻译，不借用其他语言的译文。
 	internal static string Column(string[] row, int column) => column > 0 && column < row.Length ? row[column] : null;
+
+	// 只查通用界面表里的原始译文，不做句式匹配，也不初始化语言词典；未翻译时返回 null。
+	internal static string TableTranslation(string key, string language)
+	{
+		if (language == English)
+		{
+			return UiTextEnglish.Table.TryGetValue(key, out string text) ? text : null;
+		}
+		string[] row = Table.LastOrDefault(item => item[0] == key);
+		return row != null ? Column(row, LanguageColumn(language)) : null;
+	}
 
 	private static string[][] NameColumn(string[][] table, int column) => table.Where(row => Column(row, column) != null).Select(row => new[] { row[0], row[column] }).ToArray();
 
@@ -1387,56 +1409,56 @@ public static class UiText
 		new[] { "现在显示：{0}", "현재 표시: {0}", null },
 
 		// 补充组合提示、留学场所和转成简体后的完整名称；沿用现有查表流程。
-		new[] { "这会儿有些晚了，改日再说吧。", "지금은 시간이 늦었으니 다음에 하자.", null },
-		new[] { "攻略小师妹 (攻略人数)", "공략 중인 인원 수", null },
-		new[] { "与飞石帮进入交战 (交战门派)", "교전 중인 문파 수", null },
-		new[] { "与崆峒派进入交战 (交战门派_无飞石帮)", "교전 중인 문파 수(비석방 제외)", null },
-		new[] { "攻略小师妹 (攻略人数_排除龙湘)", "공략 중인 인원 수(용상 제외)", null },
-		new[] { "攻略小梅 (攻略人数_梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국)", null },
-		new[] { "攻略小师妹 (攻略人数_三个高手_排除龙湘)", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", null },
-		new[] { "攻略上官萤 (攻略人数_排除小师妹)", "공략 중인 인원 수(소사매·용상 제외)", null },
-		new[] { "攻略小师妹 (攻略人数_排除梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국 제외)", null },
-		new[] { "攻略小师妹 (攻略人数_排除梅)", "공략 중인 인원 수(우소매 제외)", null },
-		new[] { "天道 (六道总点数)", "육도 점수 합계", null },
-		new[] { "窝居", "휴식", null },
-		new[] { "飞天殿", "비천전", null },
-		new[] { "夺魄森林", "탈백삼림", null },
-		new[] { "铁拳巷", "철권항", null },
+		new[] { "这会儿有些晚了，改日再说吧。", "지금은 시간이 늦었으니 다음에 하자.", "もう遅いので、また今度にしよう。" },
+		new[] { "攻略小师妹 (攻略人数)", "공략 중인 인원 수", "攻略人数" },
+		new[] { "与飞石帮进入交战 (交战门派)", "교전 중인 문파 수", "交戦中の門派数" },
+		new[] { "与崆峒派进入交战 (交战门派_无飞石帮)", "교전 중인 문파 수(비석방 제외)", "交戦中の門派数（飛石幇を除く）" },
+		new[] { "攻略小师妹 (攻略人数_排除龙湘)", "공략 중인 인원 수(용상 제외)", "攻略人数（龍湘を除く）" },
+		new[] { "攻略小梅 (攻略人数_梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국)", "攻略人数（梅・竹・菊）" },
+		new[] { "攻略小师妹 (攻略人数_三个高手_排除龙湘)", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", "攻略人数（小師妹・上官螢・虞小梅・郁竹）" },
+		new[] { "攻略上官萤 (攻略人数_排除小师妹)", "공략 중인 인원 수(소사매·용상 제외)", "攻略人数（小師妹・龍湘を除く）" },
+		new[] { "攻略小师妹 (攻略人数_排除梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국 제외)", "攻略人数（梅・竹・菊を除く）" },
+		new[] { "攻略小师妹 (攻略人数_排除梅)", "공략 중인 인원 수(우소매 제외)", "攻略人数（小梅を除く）" },
+		new[] { "天道 (六道总点数)", "육도 점수 합계", "六道の合計点" },
+		new[] { "窝居", "휴식", "ねぐら" },
+		new[] { "飞天殿", "비천전", "飛天殿" },
+		new[] { "夺魄森林", "탈백삼림", "奪魄の森" },
+		new[] { "铁拳巷", "철권항", "鉄拳巷" },
 		new[] { "玄功洞", "현공동", null },
-		new[] { "夺魄峰", "탈백봉", null },
-		new[] { "无色广场", "무색광장", null },
-		new[] { "鹤崖", "학애", null },
-		new[] { "常风观", "상풍관", null },
-		new[] { "上清宫", "상청궁", null },
-		new[] { "青城山镇", "청성산 마을", null },
-		new[] { "飞天殿（遇到小梅）", "비천전(우소매와 만남)", null },
-		new[] { "崆峒·{0}", "공동·{0}", null },
-		new[] { "青城·{0}", "청성·{0}", null },
-		new[] { "崆峒·{0}（Section_{1}）", "공동·{0}(Section_{1})", null },
-		new[] { "青城·{0}（Section_{1}）", "청성·{0}(Section_{1})", null },
-		new[] { "可触发：{0}", "발생 가능: {0}", null },
-		new[] { "还没有随时存档", "퀵세이브가 없습니다", null },
-		new[] { "【注意】{0}", "【주의】{0}", null },
+		new[] { "夺魄峰", "탈백봉", "奪魄峰" },
+		new[] { "无色广场", "무색광장", "無色広場" },
+		new[] { "鹤崖", "학애", "鶴崖" },
+		new[] { "常风观", "상풍관", "常風観" },
+		new[] { "上清宫", "상청궁", "上清宮" },
+		new[] { "青城山镇", "청성산 마을", "青城山町" },
+		new[] { "飞天殿（遇到小梅）", "비천전(우소매와 만남)", "飛天殿（小梅に会う）" },
+		new[] { "崆峒·{0}", "공동·{0}", "崆峒·{0}" },
+		new[] { "青城·{0}", "청성·{0}", "青城·{0}" },
+		new[] { "崆峒·{0}（Section_{1}）", "공동·{0}(Section_{1})", "崆峒·{0}（Section_{1}）" },
+		new[] { "青城·{0}（Section_{1}）", "청성·{0}(Section_{1})", "青城·{0}（Section_{1}）" },
+		new[] { "可触发：{0}", "발생 가능: {0}", "発生可能：{0}" },
+		new[] { "还没有随时存档", "퀵세이브가 없습니다", "クイックセーブはまだありません" },
+		new[] { "【注意】{0}", "【주의】{0}", "【注意】{0}" },
 
-		new[] { "嘴力+学问>N", "구력+학문>N", null },
+		new[] { "嘴力+学问>N", "구력+학문>N", "弁舌+学問>N" },
 		new[] { "青城派留学", "청성파 유학", null },
 		new[] { "崆峒派留学", "공동파 유학", null },
-		new[] { "四师兄的远行", "사사형의 먼 여행", null },
+		new[] { "四师兄的远行", "사사형의 먼 여행", "四師兄の遠行" },
 		new[] { "雪山行", "설산행", null },
-		new[] { "崆峒那些事儿", "공동파에 대하여", null },
+		new[] { "崆峒那些事儿", "공동파에 대하여", "崆峒でのあれこれ" },
 
 		// 人物名
 		new[] { "赵活", "조활", null },
-		new[] { "主角", "조활", null },
+		new[] { "主角", "조활", "趙活" },
 		new[] { "唐默铃", "당묵령", null },
 		new[] { "小师妹", "소사매", null },
 		new[] { "叶云裳", "엽운상", null },
-		new[] { "叶云啾_1", "엽운추_1", null },
-		new[] { "叶云啾_2", "엽운추_2", null },
+		new[] { "叶云啾_1", "엽운추_1", "葉雲啾_1" },
+		new[] { "叶云啾_2", "엽운추_2", "葉雲啾_2" },
 		new[] { "龙湘", "용상", null },
 		new[] { "上官萤", "상관형", null },
 		new[] { "虞小梅", "우소매", null },
-		new[] { "虞小梅_探险队长", "우소매_탐사대장", null },
+		new[] { "虞小梅_探险队长", "우소매_탐사대장", "虞小梅_探検隊長" },
 		new[] { "小梅", "우소매", null },
 		new[] { "夏侯兰", "하후란", null },
 		new[] { "小兰", "하후란", null },
@@ -1470,7 +1492,7 @@ public static class UiText
 		new[] { "解无尘", "해무진", null },
 		new[] { "丹霞子", "단하자", null },
 		new[] { "宋悲", "송비", null },
-		new[] { "鹤手", "우소매의 학 손모양", null },
+		new[] { "鹤手", "우소매의 학 손모양", "鶴の手" },
 		new[] { "石公远", "석공원", null },
 		new[] { "万里鹏程", "만리붕정", null },
 		new[] { "瑞笙", "서생", null },
@@ -1796,7 +1818,7 @@ public static class UiText
 		new[] { "好感度_宋悲", "송비 호감도", "宋悲の好感度" },
 		new[] { "好感度_申屠龙", "신도룡 호감도", "申屠龍の好感度" },
 		new[] { "好感度_福韫", "복온 호감도", "福韞の好感度" },
-		new[] { "攻略小师妹 (攻略人數)", "공략 중인 인원 수", null },
+		new[] { "攻略小师妹 (攻略人數)", "공략 중인 인원 수", "攻略人数" },
 		new[] { "好感度_刘颚", "유악 호감도", "劉顎の好感度" },
 		new[] { "随机值_0_100", "난수(0–100)", null },
 		new[] { "技能_道学", "기능 「도학」", "技能「道学」" },
@@ -1867,7 +1889,7 @@ public static class UiText
 		new[] { "技能_白鲨语", "기능 「백사어」", "技能「白鮫語」" },
 		new[] { "丐帮谈判", "개방과의 협상", null },
 		new[] { "赎回任何资产", "자산을 하나 이상 되찾음", null },
-		new[] { "与飞石帮进入交战 (交戰門派)", "교전 중인 문파 수", null },
+		new[] { "与飞石帮进入交战 (交戰門派)", "교전 중인 문파 수", "交戦中の門派数" },
 		new[] { "贵重品_切鱼刀", "생선칼 보유 수량", "魚切り包丁の所持数" },
 		new[] { "秘笈等级_掷石问天", "「척석문천」 비급 등급", "「擲石問天」の秘笈レベル" },
 		new[] { "贵重品_叫化鸡食谱", "거지닭 요리법 보유 수량", "叫化鶏食譜の所持数" },
@@ -1880,7 +1902,7 @@ public static class UiText
 		new[] { "技能_粹毒", "기능 「수독」", "技能「粋毒」" },
 		new[] { "开发项目等级_切鱼刀", "생선칼 개발 등급", "「魚切り包丁」の開発レベル" },
 		new[] { "书籍_江湖鬼域录", "강호귀역록 보유 수량", null },
-		new[] { "与崆峒派进入交战 (交戰門派_無飛石幫)", "교전 중인 문파 수(비석방 제외)", null },
+		new[] { "与崆峒派进入交战 (交戰門派_無飛石幫)", "교전 중인 문파 수(비석방 제외)", "交戦中の門派数（飛石幇を除く）" },
 		new[] { "书籍_夺魄幽灵爪", "탈백유령조 보유 수량", "奪魄幽霊爪の所持数" },
 		new[] { "好感度_李富贵_樊啸天", "이부귀·번소천 호감도", null },
 		new[] { "贵重品_密密缝", "밀밀봉 보유 수량", "密密縫の所持数" },
@@ -1893,12 +1915,12 @@ public static class UiText
 		new[] { "南宫世家_锦香宫_上官世家", "남궁세가·금향궁·상관세가", null },
 		new[] { "好感度_刘颚_赵逵_车轩辕_王二壮", "유악·조규·차헌원·왕이장 호감도", null },
 		new[] { "秘笈等级_玄烛心经", "「현촉심경」 비급 등급", "「玄燭心経」の秘笈レベル" },
-		new[] { "攻略小师妹 (攻略人數_排除龍湘)", "공략 중인 인원 수(용상 제외)", null },
+		new[] { "攻略小师妹 (攻略人數_排除龍湘)", "공략 중인 인원 수(용상 제외)", "攻略人数（龍湘を除く）" },
 		new[] { "好感度_车轩辕", "차헌원 호감도", "車軒轅の好感度" },
 		new[] { "好感度_王二壮", "왕이장 호감도", null },
-		new[] { "攻略小梅 (攻略人數_梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국)", null },
+		new[] { "攻略小梅 (攻略人數_梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국)", "攻略人数（梅・竹・菊）" },
 		new[] { "杂物_猴儿酒", "후아주 보유 수량", "猿酒の所持数" },
-		new[] { "攻略小师妹 (攻略人數_三個高手_排除龍湘)", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", null },
+		new[] { "攻略小师妹 (攻略人數_三個高手_排除龍湘)", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", "攻略人数（小師妹・上官螢・虞小梅・郁竹）" },
 		new[] { "条件_没有攻略龙湘", "용상 미공략", null },
 		new[] { "杂物_金念珠", "금염주 보유 수량", "金の数珠の所持数" },
 		new[] { "技能_翻浪刀法", "기능 「번랑도법」", "技能「翻浪刀法」" },
@@ -1911,8 +1933,8 @@ public static class UiText
 		new[] { "书籍_金钟罩", "금종조 보유 수량", "金鐘罩の所持数" },
 		new[] { "秘笈等级_玄玄如意指", "「현현여의지」 비급 등급", "「玄玄如意指」の秘笈レベル" },
 		new[] { "学问_厨艺", "학문·요리", null },
-		new[] { "攻略上官萤 (攻略人數_排除小師妹)", "공략 중인 인원 수(소사매·용상 제외)", null },
-		new[] { "攻略小师妹 (攻略人數_排除梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국 제외)", null },
+		new[] { "攻略上官萤 (攻略人數_排除小師妹)", "공략 중인 인원 수(소사매·용상 제외)", "攻略人数（小師妹・龍湘を除く）" },
+		new[] { "攻略小师妹 (攻略人數_排除梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국 제외)", "攻略人数（梅・竹・菊を除く）" },
 		new[] { "开发项目等级_沥泉小剑", "역천소검 개발 등급", "「瀝泉短剣」の開発レベル" },
 		new[] { "技能_金钟罩", "기능 「금종조」", "技能「金鐘罩」" },
 		new[] { "技能_九转轮回", "기능 「구전윤회」", "技能「九転輪廻」" },
@@ -1923,7 +1945,7 @@ public static class UiText
 		new[] { "贵重品_还虚丹", "환허단 보유 수량", "還虚丹の所持数" },
 		new[] { "贵重品_乌蚕宝衣", "오잠보의 보유 수량", "烏蚕の宝衣の所持数" },
 		new[] { "好感度_万里鹏程", "만리붕정 호감도", null },
-		new[] { "攻略小师妹 (攻略人數_排除梅)", "공략 중인 인원 수(우소매 제외)", null },
+		new[] { "攻略小师妹 (攻略人數_排除梅)", "공략 중인 인원 수(우소매 제외)", "攻略人数（小梅を除く）" },
 		new[] { "贵重品_完竟剑", "완경검 보유 수량", null },
 		new[] { "开发项目等级_唐门传承小剑", "당문전승소검 개발 등급", "「唐門伝承短剣」の開発レベル" },
 		new[] { "贵重品_小竹按摩券", "욱죽 안마권 보유 수량", "郁竹の按摩券の所持数" },
@@ -1932,7 +1954,7 @@ public static class UiText
 		new[] { "书籍_飞天脚", "비천각 보유 수량", null },
 		new[] { "书籍_无影爪", "무영조 보유 수량", "無影爪の所持数" },
 		new[] { "书籍_铁臂神拳", "철비신권 보유 수량", "鉄臂神拳の所持数" },
-		new[] { "天道 (六道總點數)", "육도 점수 합계", null },
+		new[] { "天道 (六道總點數)", "육도 점수 합계", "六道の合計点" },
 		new[] { "杂物_烧刀子", "소도자 보유 수량", "焼刀子の所持数" },
 		new[] { "杂物_苏合香酒", "소합향주 보유 수량", "蘇合香酒の所持数" },
 		new[] { "杂物_纳溪梅岭", "납계매령 보유 수량", "納渓梅嶺の所持数" },
@@ -1962,16 +1984,16 @@ public static class UiText
 		new[] { "条件_心上人_小梅或小竹", "마음에 둔 사람이 우소매 또는 욱죽", null },
 		new[] { "书籍_仙鹤迷踪拳", "선학미종권 보유 수량", "仙鶴迷踪拳の所持数" },
 		new[] { "自己", "자신", null },
-		new[] { "旗标攻略人数", "공략 중인 인원 수", null },
-		new[] { "旗标攻略人数_排除梅", "공략 중인 인원 수(우소매 제외)", null },
-		new[] { "旗标攻略人数_排除梅竹菊", "공략 중인 인원 수(우소매·욱죽·위국 제외)", null },
-		new[] { "旗标攻略人数_排除小师妹", "공략 중인 인원 수(소사매·용상 제외)", null },
-		new[] { "旗标攻略人数_排除龙湘", "공략 중인 인원 수(용상 제외)", null },
-		new[] { "旗标攻略人数_三个高手_排除龙湘", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", null },
-		new[] { "旗标攻略人数_梅竹菊", "공략 중인 인원 수(우소매·욱죽·위국)", null },
-		new[] { "旗标交战门派", "교전 중인 문파 수", null },
-		new[] { "旗标交战门派_无飞石帮", "교전 중인 문파 수(비석방 제외)", null },
-		new[] { "旗标六道总点数", "육도 점수 합계", null },
+		new[] { "旗标攻略人数", "공략 중인 인원 수", "攻略人数" },
+		new[] { "旗标攻略人数_排除梅", "공략 중인 인원 수(우소매 제외)", "攻略人数（小梅を除く）" },
+		new[] { "旗标攻略人数_排除梅竹菊", "공략 중인 인원 수(우소매·욱죽·위국 제외)", "攻略人数（梅・竹・菊を除く）" },
+		new[] { "旗标攻略人数_排除小师妹", "공략 중인 인원 수(소사매·용상 제외)", "攻略人数（小師妹・龍湘を除く）" },
+		new[] { "旗标攻略人数_排除龙湘", "공략 중인 인원 수(용상 제외)", "攻略人数（龍湘を除く）" },
+		new[] { "旗标攻略人数_三个高手_排除龙湘", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", "攻略人数（小師妹・上官螢・虞小梅・郁竹）" },
+		new[] { "旗标攻略人数_梅竹菊", "공략 중인 인원 수(우소매·욱죽·위국)", "攻略人数（梅・竹・菊）" },
+		new[] { "旗标交战门派", "교전 중인 문파 수", "交戦中の門派数" },
+		new[] { "旗标交战门派_无飞石帮", "교전 중인 문파 수(비석방 제외)", "交戦中の門派数（飛石幇を除く）" },
+		new[] { "旗标六道总点数", "육도 점수 합계", "六道の合計点" },
 		new[] { "旗标赎回任何资产", "자산을 하나 이상 되찾음", null },
 		new[] { "接到「{0}」", "「{0}」(으)로 이어짐", null },
 		new[] { "战斗之后接到「{0}」", "전투 후 「{0}」(으)로 이어짐", null },

@@ -26,6 +26,7 @@ public class MapEventHints : MonoBehaviour
 	private static MapEventHints _instance;
 	private static PositionController _hovered;
 	private static string _text;
+	private static string _displayLanguage;
 	// 我们点亮光效的建筑：鼠标移开时游戏会把光效关掉，再点亮
 	private static readonly HashSet<PositionController> Glowing = new HashSet<PositionController>();
 	private static readonly Regex PoolCall = new Regex(@"checkpointmanager\.Position\(\s*""([A-Za-z0-9_]+)""\s*\)");
@@ -153,8 +154,10 @@ public class MapEventHints : MonoBehaviour
 			_box.alignment = TextAnchor.UpperLeft;
 			_box.padding = new RectOffset((int)(14f * scale), (int)(14f * scale), (int)(10f * scale), (int)(10f * scale));
 		}
-		if (_text == null)
+		// 事件名已按界面语言翻译；切换语言时只重建提示文字。
+		if (_text == null || _displayLanguage != TextConverter.DisplayLanguage)
 		{
+			_displayLanguage = TextConverter.DisplayLanguage;
 			try
 			{
 				_text = Describe(_hovered);
@@ -796,7 +799,7 @@ internal sealed class PositionOptionHints : MonoBehaviour
 	private bool _useSelection, _touched;
 	private Vector2 _lastMouse;
 	private MonoBehaviour _pointed;
-	private string _key, _text;
+	private string _key, _text, _displayLanguage;
 	private GUIStyle _box;
 	private float _scale = -1f;
 	private int _fontMode = -1;
@@ -888,9 +891,11 @@ internal sealed class PositionOptionHints : MonoBehaviour
 	{
 		Text source = Traverse.Create(option).Field("_source").GetValue<Text>();
 		string key = source != null && source.text != null ? source.text.Trim() : "";
-		if (key != _key)
+		// 同一选项也可能换了界面语言；保留事件池缓存，只清掉旧提示。
+		if (key != _key || _displayLanguage != TextConverter.DisplayLanguage)
 		{
 			_key = key;
+			_displayLanguage = TextConverter.DisplayLanguage;
 			_text = null;
 		}
 		if (_text != null)

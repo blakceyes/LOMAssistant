@@ -33,6 +33,23 @@ public static class StoryJump
 		public int Picked;
 		/// <summary>选哪条会让流程不一样（去处、主线、旗标、任务进度不同）；只差数值、好感、对白的不列出来，按默认补。</summary>
 		public bool Matters;
+
+		// 条件要先翻译再截短；只重排显示文字，不重算跳转计划或玩家的选择。
+		internal Func<List<string>> FormatOptions;
+		private string _displayLanguage;
+
+		internal void RefreshOptions()
+		{
+			string language = TextConverter.DisplayLanguage;
+			if (FormatOptions == null || _displayLanguage == language)
+			{
+				return;
+			}
+			List<string> options = FormatOptions();
+			Options.Clear();
+			Options.AddRange(options);
+			_displayLanguage = language;
+		}
 	}
 
 	public sealed class Plan
@@ -338,9 +355,10 @@ public static class StoryJump
 				}
 				bool matters = options.Select(o => FlowSignature(s, path => path.Any(st => st.Key == o.Key))).Distinct().Count() > 1;
 				// 有的选项要满足条件才会出现（「夏侯兰是我的妻子」要先和她结缘）：写明条件，默认选不要条件的那个
-				var labels = options.Select(st => "「" + StoryScripts.OptionText(st.Key) + "」" + (st.Requirement.Length > 0 ? "　（要 " + Short(RichText.Strip(DataHelper.ParseConditionCheckpoint(st.Requirement)), 40) + "）" : "")).ToList();
+				var texts = options.Select(st => (Option: StoryScripts.OptionText(st.Key), Condition: st.Requirement.Length > 0 ? RichText.Strip(DataHelper.ParseConditionCheckpoint(st.Requirement)) : "")).ToList();
+				List<string> Labels() => texts.Select(t => "「" + t.Option + "」" + (t.Condition.Length > 0 ? "　（要 " + Short(TextConverter.ForDisplay(t.Condition), 40) + "）" : "")).ToList();
 				int plain = options.FindIndex(st => st.Requirement.Length == 0);
-				int pick = Choose(plan, mission, s, "选项" + g, labels, plain >= 0 ? plain : 0, matters);
+				int pick = Choose(plan, mission, s, "选项" + g, Labels(), plain >= 0 ? plain : 0, matters, Labels);
 				stays.Add(options[pick].Key);
 			}
 			Collect(plan, s, exit, stays);
@@ -405,10 +423,15 @@ public static class StoryJump
 			}
 			// 第 1、2… 支在前，「以上都不满足」放最后
 			List<int> list = count.Keys.OrderBy(a => a == 0 ? int.MaxValue : a).ToList();
-			var labels = new List<string> { "按游戏判断" };
-			labels.AddRange(list.Select(a => Short(RichText.Strip(DataHelper.SwitchBranchCondition(name, a)), 40) + (count[a] > 0 ? $"　（没读过 {count[a]} 句）" : "")));
+			var texts = list.Select(a => (Condition: RichText.Strip(DataHelper.SwitchBranchCondition(name, a)), Unread: count[a])).ToList();
+			List<string> Labels()
+			{
+				var labels = new List<string> { "按游戏判断" };
+				labels.AddRange(texts.Select(t => Short(TextConverter.ForDisplay(t.Condition), 40) + (t.Unread > 0 ? $"　（没读过 {t.Unread} 句）" : "")));
+				return labels;
+			}
 			int most = list.OrderByDescending(a => count[a]).First();
-			int picked = ChooseNamed(plan, plan.Mission, plan.Mission.Key + "|" + s.Name + "|条件" + name, StoryScripts.SegmentName(s.Name), labels, list.IndexOf(most) + 1, true);
+			int picked = ChooseNamed(plan, plan.Mission, plan.Mission.Key + "|" + s.Name + "|条件" + name, StoryScripts.SegmentName(s.Name), Labels(), list.IndexOf(most) + 1, true, Labels);
 			if (picked > 0)
 			{
 				plan.Arms[name] = list[picked - 1];
@@ -417,10 +440,10 @@ public static class StoryJump
 	}
 
 	// 岔口：两条路以上才问；返回选的第几条
-	private static int Choose(Plan plan, StoryMission mission, StoryScript script, string what, List<string> options, int fallback, bool matters)
-		=> ChooseNamed(plan, mission, mission.Key + "|" + script.Name + "|" + what, StoryScripts.SegmentName(script.Name), options, fallback, matters);
+	private static int Choose(Plan plan, StoryMission mission, StoryScript script, string what, List<string> options, int fallback, bool matters, Func<List<string>> formatOptions = null)
+		=> ChooseNamed(plan, mission, mission.Key + "|" + script.Name + "|" + what, StoryScripts.SegmentName(script.Name), options, fallback, matters, formatOptions);
 
-	private static int ChooseNamed(Plan plan, StoryMission mission, string key, string segment, List<string> options, int fallback, bool matters)
+	private static int ChooseNamed(Plan plan, StoryMission mission, string key, string segment, List<string> options, int fallback, bool matters, Func<List<string>> formatOptions = null)
 	{
 		if (options.Count < 2)
 		{
@@ -431,7 +454,7 @@ public static class StoryJump
 			plan.Minor++;
 		}
 		int picked = plan.Choices.TryGetValue(key, out int chosen) && chosen >= 0 && chosen < options.Count ? chosen : fallback;
-		var fork = new Fork { Key = key, Mission = mission, Segment = segment, Picked = picked, Matters = matters };
+		var fork = new Fork { Key = key, Mission = mission, Segment = segment, Picked = picked, Matters = matters, FormatOptions = formatOptions };
 		fork.Options.AddRange(options);
 		plan.Forks.Add(fork);
 		return picked;
