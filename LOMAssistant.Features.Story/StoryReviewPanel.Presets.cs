@@ -98,11 +98,11 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableStoryJump, false),
 			}.Concat(Cheats(true, false)).ToArray(),
 		},
-		// 作者自己玩的设置：比「全开」少了判断前选走哪一支、强行触发条件没满足的事件和选项，以及会让战斗、商店失去意义的作弊
+		// 介于「辅助」和「全开」之间：比「全开」少了判断前选走哪一支、强行触发条件没满足的事件和选项，以及会让战斗、商店失去意义的作弊
 		new Preset
 		{
 			Name = "进阶",
-			Tagline = "作者自己玩用的设置",
+			Tagline = "建议补全剧情的老玩家选择",
 			Note = "打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开判断前选走哪一支和强行触发条件没满足的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品",
 			Values = new (IConfigElement, object)[]
 			{
@@ -130,8 +130,8 @@ public partial class StoryReviewPanel
 		new Preset
 		{
 			Name = "全开",
-			Tagline = "建议补全剧情的老玩家选择",
-			Note = "在「辅助」之上再打开分支小窗、旗标提示、随机事件自选、判断前选走哪一支、决斗敌方行动预测、四师兄卖全部物品、剧情跳转、强行触发条件没满足的事件和选项，以及战斗无敌等作弊",
+			Tagline = "建议想收集全部剧情分支的玩家选择",
+			Note = "在「进阶」之上再打开判断前选走哪一支、强行触发条件没满足的事件和选项、四师兄卖全部物品，讲经堂全部解锁，以及战斗无敌等作弊",
 			Values = new (IConfigElement, object)[]
 			{
 				(ConfigManager.ShowBranchChecks, true),
@@ -263,10 +263,28 @@ public partial class StoryReviewPanel
 		{
 			Fill(new Rect(0, 0, _windowRect.width, _windowRect.height), new Color(0.1f, 0.08f, 0.05f, 0.35f));
 		}
-		// 四档时卡片窄一些，整排放得进窗口
-		float card = S(Presets.Length > 3 ? 250 : 300), gap = S(Presets.Length > 3 ? 16 : 20), pad = S(28);
-		float width = card * Presets.Length + gap * (Presets.Length - 1) + pad * 2, height = S(500);
-		var box = new Rect((_windowRect.width - width) / 2, (_windowRect.height - height) / 2, width, height);
+		int count = Presets.Length;
+		float gap = S(count > 3 ? 16 : 20), pad = S(28);
+		// 卡片宽度：最宽 300，一整排要放得进窗口（两边各留 40）
+		float card = Mathf.Min(S(300), (_windowRect.width - S(80) - pad * 2 - gap * (count - 1)) / count);
+		float inner = card - S(28);
+		// 韩语、英语按空格换行；中文、日语自己断行，标点不放到行首
+		bool spaced = TextConverter.DisplayLanguage is UiText.Korean or UiText.English;
+		GUIStyle note = new GUIStyle(_label) { wordWrap = spaced };
+		GUIStyle tagline = new GUIStyle(_label) { fontStyle = FontStyle.Bold, wordWrap = spaced };
+		tagline.normal.textColor = Cinnabar;
+		// 标语、说明按内容量出高度，四张卡片一样高，最长的那张也放得下（以前写死高度，字多的会被截掉）
+		string Wrap(string text, GUIStyle style) => spaced ? text : WrapCjk(TextConverter.ForDisplay(text), style, inner);
+		var taglines = Presets.Select(p => Wrap(p.Tagline, tagline)).ToArray();
+		var notes = Presets.Select(p => Wrap(p.Note, note)).ToArray();
+		// 挤到行末的标点会超出断行宽度：框比断行宽度多留一个字，免得被裁掉
+		float boxWidth = inner + (spaced ? 0 : note.fontSize);
+		float taglineHeight = taglines.Max(t => tagline.CalcHeight(new GUIContent(t), boxWidth));
+		float noteHeight = notes.Max(t => note.CalcHeight(new GUIContent(t), boxWidth));
+		float cardHeight = S(10) + S(34) + S(6) + taglineHeight + S(10) + noteHeight + S(14);
+		float width = card * count + gap * (count - 1) + pad * 2;
+		float height = S(104) + cardHeight + S(12) + S(42) + S(16) + S(36) + S(20);
+		var box = new Rect((_windowRect.width - width) / 2, Mathf.Max(0, (_windowRect.height - height) / 2), width, height);
 		if (Event.current.type == EventType.Repaint)
 		{
 			Fill(box, PaperLight);
@@ -274,12 +292,8 @@ public partial class StoryReviewPanel
 		}
 		GUI.Label(new Rect(box.x + pad, box.y + S(20), width - pad * 2, S(36)), "选一个预设", _heading);
 		GUI.Label(new Rect(box.x + pad, box.y + S(60), width - pad * 2, S(30)), "之后随时可以在设置页最上面换，也可以逐项调整。存档、提速、界面、热键等设置不受影响。", _muted);
-		// 韩语按空格换行；中文、日语自己断行，标点不放到行首
-		// 韩语、英语按空格换行，不用自己断行
-		bool korean = TextConverter.DisplayLanguage is UiText.Korean or UiText.English;
-		GUIStyle note = new GUIStyle(_label) { wordWrap = korean };
-		float y = box.y + S(104), cardHeight = S(270);
-		for (int i = 0; i < Presets.Length; i++)
+		float y = box.y + S(104);
+		for (int i = 0; i < count; i++)
 		{
 			Preset preset = Presets[i];
 			var r = new Rect(box.x + pad + i * (card + gap), y, card, cardHeight);
@@ -287,13 +301,10 @@ public partial class StoryReviewPanel
 			{
 				Frame(r, InkLine, 1);
 			}
-			GUI.Label(new Rect(r.x + S(14), r.y + S(10), card - S(28), S(34)), preset.Name, Middle(_heading));
-			GUIStyle tagline = new GUIStyle(Middle(_label)) { fontStyle = FontStyle.Bold };
-			tagline.normal.textColor = Cinnabar;
-			GUI.Label(new Rect(r.x + S(14), r.y + S(48), card - S(28), S(30)), preset.Tagline, tagline);
-			// 挤到行末的标点会超出断行宽度：框比断行宽度多留一个字，免得被裁掉
-			string text = korean ? preset.Note : WrapCjk(TextConverter.ForDisplay(preset.Note), note, card - S(28));
-			GUI.Label(new Rect(r.x + S(14), r.y + S(86), card - S(28) + (korean ? 0 : note.fontSize), cardHeight - S(96)), text, note);
+			GUI.Label(new Rect(r.x + S(14), r.y + S(10), inner, S(34)), preset.Name, Middle(_heading));
+			float ty = r.y + S(10) + S(34) + S(6);
+			GUI.Label(new Rect(r.x + S(14), ty, boxWidth, taglineHeight), taglines[i], tagline);
+			GUI.Label(new Rect(r.x + S(14), ty + taglineHeight + S(10), boxWidth, noteHeight), notes[i], note);
 			if (GUI.Button(new Rect(r.x, r.yMax + S(12), card, S(42)), string.Format("用「{0}」", preset.Name), _button))
 			{
 				foreach (var (element, value) in preset.Values)
