@@ -2,6 +2,16 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.3.0 (2026-10-31)
+
+- **Pick the branch before a check** (new setting, off by default; only the **All on** preset turns it on): at a story check that branches on conditions, the game stops first when another branch has unread lines or leads to a different scene, lists each branch's conditions, current values and whether its lines were seen, and takes the branch you pick. By default values are left alone and only this one check goes that way; with **Change values to fit the chosen branch** on (off by default), stats, affection and flags are first changed just enough for that branch.
+- **Force events whose conditions aren't met** (new setting, off by default; only the **All on** preset turns it on): the event picker also lists events whose conditions aren't met, with what they need; clicking one triggers it regardless, without changing flags.
+- **Force options whose conditions aren't met** (new setting, off by default; only the **All on** preset turns it on): options that are hidden when their conditions aren't met are listed too, marked **Conditions not met** in red, with the conditions on hover; options already picked aren't listed. Locked options whose conditions can't be set get **Force unlock**, which unlocks them without changing values.
+- **Story jump**: the confirmation page lists the condition checks inside the target scene and defaults to the branch with unread lines, which is taken directly after the jump. Jumping back no longer fills in the main quests in between; fixed jumping back filling in main quests from later chapters.
+- **Pick random events**: keyboard and gamepad can reach every entry; fast-forward stops when the picker pops up; Esc no longer opens the game menu and stalls the story while it's open; it's no longer hidden behind the story's fade to black.
+- **Unlock**: the button now uses the same style as the hint boxes.
+- **Conflict detection**: mods that change the same game code as this one but work alongside it are no longer flagged for removal; only real conflicts are reported.
+
 ## 3.2.5 (2026-10-30)
 
 - **AI Companion**: characters Zhao Huo hasn't met yet in the current playthrough no longer act as if they know him; how they address him only follows the story read in this playthrough; story scenes that only mention a character are no longer treated as things she went through with Zhao Huo; after switching saves, the current progress is what counts.
