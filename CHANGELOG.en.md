@@ -2,6 +2,15 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.3.1 (2026-10-31)
+
+- **Search**: search boxes in the story review take pinyin initials; in the Korean UI you can type initial consonants, and in the English UI the first letters of the words.
+- **"Advanced" preset**: a new preset between **Assist** and **All on**. Story aids are on; picking the branch before a check and forcing events and options whose conditions aren't met are off; the only cheats are unlimited training and forging and free forging money.
+- **Lecture hall**: the unlock display now has three modes, Off, Hints only and Unlock all; hover over an ending or death to see how to reach it. Assist and Advanced use Hints only, All on uses Unlock all, As intended is Off.
+- **Game speed**: team battles and story lines that advance by themselves stay at normal speed.
+- **Pick the branch before a check**: new setting **Stop for seen branches too** (off by default); when on, it also stops when another branch has lines you've already seen.
+- **Korean UI**: filled in missing translations and corrected names, condition texts and numbering; switching the UI language now refreshes random event names, branch destinations and map hints.
+
 ## 3.3.0 (2026-10-31)
 
 - **Pick the branch before a check** (new setting, off by default; only the **All on** preset turns it on): at a story check that branches on conditions, the game stops first when another branch has unread lines or leads to a different scene, lists each branch's conditions, current values and whether its lines were seen, and takes the branch you pick. By default values are left alone and only this one check goes that way; with **Change values to fit the chosen branch** on (off by default), stats, affection and flags are first changed just enough for that branch.
