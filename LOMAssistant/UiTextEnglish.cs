@@ -741,7 +741,7 @@ public static class UiTextEnglish
 		["· 「{0}」这一步要靠掷骰，按选的这条路补"] = "· 「{0}」 depends on a dice roll; filled in as the chosen way",
 		["· 「{0}」里有战斗，没有真的打，按选的这条路补"] = "· 「{0}」 has a fight that isn't actually fought; filled in as the chosen way",
 		["· 主线从现在这一步接不到目标任务（不在同一条路线上，或要靠别的支线接进来），中间的主线剧情没有补"] = "· The main story doesn't lead from here to this quest (another route, or entered from a side story), so the main story in between isn't filled in",
-		["· 目标在现在之前，日期会往回调"] = "· The target is earlier than now; the date goes back",
+		["· 目标在现在之前，日期会往回调；中间的主线不补，之后已经走过的剧情和旗标也不会撤销"] = "· The target is earlier than now, so the date goes back; main quests in between are not filled in, and story and flags you have already passed are not undone",
 		["跳之前会先存一份随时存档，备注「跳转前」"] = "A save-anywhere save noted 「Before jump」 is made first",
 		["读档进入游戏后才能跳转"] = "Load a save first to jump",
 		["在养成地图或剧情里才能跳转"] = "You can only jump on the training map or during the story",

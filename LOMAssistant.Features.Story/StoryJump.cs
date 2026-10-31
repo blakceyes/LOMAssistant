@@ -110,7 +110,9 @@ public static class StoryJump
 		StoryMission current = missions?.Main != null ? StoryAtlas.Find(missions.Main.CurrentKey) : null;
 		plan.MissionFrom = current?.Title ?? "";
 		plan.MissionTo = mission.Title;
-		if (mission.Main && current != null && current != mission)
+		// 往回跳（目标比现在早）：中间的主线早就走过了，不补，只走目标任务自己
+		bool back = mission.From != null && plan.FromRounds != null && mission.From < plan.FromRounds;
+		if (mission.Main && current != null && current != mission && !back)
 		{
 			plan.Current = current;
 		}
@@ -263,7 +265,7 @@ public static class StoryJump
 		}
 		if (plan.FromRounds != null && plan.ToRounds != null && plan.ToRounds < plan.FromRounds)
 		{
-			plan.Notes.Add("目标在现在之前，日期会往回调");
+			plan.Notes.Add("目标在现在之前，日期会往回调；中间的主线不补，之后已经走过的剧情和旗标也不会撤销");
 		}
 	}
 
@@ -550,7 +552,8 @@ public static class StoryJump
 			{
 				edges.Add((p.Key, side.Key));
 			}
-			foreach (string n in side.Next.Where(mains.ContainsKey))
+			// 每个月的唐门会议都是同一套剧本，会上能推到的主线站每一场都算上了；只接日期不早于这场会的，免得后面的会接回前面的站绕成环
+			foreach (string n in side.Next.Where(n => mains.ContainsKey(n) && !(date[n] < side.From)))
 			{
 				edges.Add((side.Key, n));
 			}
@@ -559,17 +562,18 @@ public static class StoryJump
 		return _mainGraph = edges;
 	}
 
-	/// <summary>能沿着主线连线走到 target 的站（含它自己）。</summary>
+	/// <summary>能沿着主线连线走到 target 的站（含它自己）。日期比目标还晚的站不算：从那里绕回来的路不走。</summary>
 	private static HashSet<string> Reaching(string target)
 	{
 		var graph = MainGraph();
+		int? until = StoryAtlas.Find(target)?.From;
 		var reach = new HashSet<string>(StringComparer.Ordinal) { target };
 		for (bool grew = true; grew;)
 		{
 			grew = false;
 			foreach (var (from, to) in graph)
 			{
-				if (reach.Contains(to) && reach.Add(from))
+				if (reach.Contains(to) && !(StoryAtlas.Find(from)?.From > until) && reach.Add(from))
 				{
 					grew = true;
 				}
