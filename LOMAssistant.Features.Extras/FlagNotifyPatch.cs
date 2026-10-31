@@ -82,7 +82,7 @@ public static class FlagNotifyPatch
 			StoryMainUI ui = StoryMainUI.Instance;
 			if (ui != null && ui.isActiveAndEnabled)
 			{
-				ui.DisplayMessageText(message);
+				ui.DisplayMessageText(TextConverter.ForDisplay(message));
 				Linger(ui);
 			}
 		}

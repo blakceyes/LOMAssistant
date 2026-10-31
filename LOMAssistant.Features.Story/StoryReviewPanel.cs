@@ -949,7 +949,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			return ending.Number + ". ";
 		}
 		string format = Mortal.Core.LocalizationManager.Instance?.LocaleResolver?.GetString("System/EndText");
-		return (string.IsNullOrEmpty(format) || !format.Contains("{0}") ? "结局" + ending.Number : string.Format(format, ending.Number)) + "　";
+		return (string.IsNullOrEmpty(format) || !format.Contains("{0}") ? TextConverter.ForDisplay("结局") + ending.Number : string.Format(format, ending.Number)) + "　";
 	}
 
 	private static bool _endingsByTime; // false：按游戏图鉴的编号；true：按剧情里最早能触发的时间

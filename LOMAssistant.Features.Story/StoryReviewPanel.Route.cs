@@ -664,7 +664,7 @@ public partial class StoryReviewPanel
 				string conditions = done ? "" : StoryAtlas.ConditionText(s.Mission);
 				if (conditions.Length > 0)
 				{
-					GUILayout.Label("触发条件（这一局的值）：" + OnPaper(conditions), WrapSmall(), GUILayout.Width(_routeDetailInner - S(24)));
+					GUILayout.Label(TextConverter.ForDisplay("触发条件（这一局的值）：") + OnPaper(conditions), WrapSmall(), GUILayout.Width(_routeDetailInner - S(24)));
 				}
 			}
 			GUILayout.EndVertical();
@@ -891,7 +891,7 @@ public partial class StoryReviewPanel
 		{
 			return;
 		}
-		GUILayout.Label($"旗标里找到 {_flagHits.Count} 面" + (_flagHits.Count > FlagHitsShown ? $"（只列前 {FlagHitsShown} 面，搜得更具体些能缩小范围）" : ""), _heading);
+		GUILayout.Label($"旗标里找到 {_flagHits.Count} 面" + (_flagHits.Count > FlagHitsShown ? $"　（只列前 {FlagHitsShown} 面，搜得更具体些能缩小范围）" : ""), _heading);
 		foreach (var (name, note, uses) in _flagHits.Take(FlagHitsShown))
 		{
 			GUILayout.Space(S(6));
@@ -926,7 +926,7 @@ public partial class StoryReviewPanel
 			_searchedFor = query;
 			_searchHits = StoryAtlas.SearchDialogue(query, 60);
 		}
-		GUILayout.Label(_searchHits.Count == 0 ? "台词里没找到" : $"台词里找到 {_searchHits.Count} 处" + (_searchHits.Count >= 60 ? "（只列前 60 处）" : ""), _heading);
+		GUILayout.Label(_searchHits.Count == 0 ? "台词里没找到" : $"台词里找到 {_searchHits.Count} 处" + (_searchHits.Count >= 60 ? "　（只列前 60 处）" : ""), _heading);
 		foreach (var (script, snippet) in _searchHits)
 		{
 			StoryAtlas.Owner.TryGetValue(script, out StoryMission m);

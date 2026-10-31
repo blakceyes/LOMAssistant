@@ -260,7 +260,7 @@ public partial class StoryReviewPanel
 						now.Events.Add(new NowEvent
 						{
 							Data = data,
-							Name = TextConverter.ToSimplified(PositionEventCache.Instance.GetPositionEventName(data)),
+							Name = TextConverter.ForDisplay(TextConverter.ToSimplified(PositionEventCache.PlaceName(pool))) + "　" + TextConverter.ForDisplay("事件：") + "　" + DataHelper.GetEventName(data),
 							Desc = OnPaper(TextConverter.ToSimplified(PositionEventCache.Instance.GetPositionEventDesc(data)).Trim()),
 							Rate = rate,
 							Percent = rate > 0 ? Mathf.RoundToInt(rate * 100f / total) : 0,
