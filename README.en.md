@@ -77,7 +77,7 @@ Connect a large language model with your own API key to ask about the story and 
 
   <img src="media/story-nodes.webp" width="640" alt="Branch saves: recorded story segments by date, replay or delete">
 
-- **Story jump**: pick a scene on the route map or story map and click **Jump here** to play from there, even one you haven't reached yet. Handy for filling in the story or collecting endings on another route. Before the jump you see the choices along the way that affect what comes later; the progress in between is filled in the way you pick, and you can bond with one of the heroines too. A save-anywhere save is made first, so you can always go back. The story in between isn't actually played, so now and then things may not line up; not recommended for normal play.
+- **Story jump**: pick a scene on the route map or story map and click **Jump here** to play from there, even one you haven't reached yet. Handy for filling in the story or collecting endings on another route. Before the jump you see the choices along the way that affect what comes later; the progress in between is filled in the way you pick, and you can bond with one of the heroines too. Condition checks inside the target scene default to the branch with unread lines; after the jump that branch's conditions are filled in, or the branch is taken directly when they can't be. A save-anywhere save is made first, so you can always go back. The story in between isn't actually played, so now and then things may not line up; not recommended for normal play.
 
   <img src="media/story-jump.webp" width="640" alt="Story jump: before jumping it lists the quest, date and changes filled in, lets you bond with someone, and lets you pick each fork on the way">
 
@@ -92,7 +92,7 @@ Connect a large language model with your own API key to ask about the story and 
 
   <img src="media/option-hint.webp" width="640" alt="Options followed by their results and unlock conditions">
 
-- **Pick random events** (off by default): when working, wandering and so on, choose which event triggers, or roll with the normal odds. Events you haven't seen yet are marked **Not seen**. Branch checks that roll a random number also let you pick the path. Each event or path can be set to **Always** or **Never**; the rule is remembered and applies even with the picker off.
+- **Pick random events** (off by default): when working, wandering and so on, choose which event triggers, or roll with the normal odds. Events you haven't seen yet are marked **Not seen**. Branch checks that roll a random number also let you pick the path. Each event or path can be set to **Always** or **Never**; the rule is remembered and applies even with the picker off. With **Force events whose conditions aren't met** on in settings (only the **All on** preset turns it on), those events are also folded below with what they need; clicking one triggers it regardless, without changing flags.
 
   <img src="media/event-picker.webp" width="480" alt="Pick random events: the events that can trigger, their odds and changes">
 
@@ -162,7 +162,7 @@ Changing values or flags at random can break the story; save first.
 - **Interface**: dark mode; Source Han Serif or Microsoft YaHei font; separate opacity for the main window, small windows and hint boxes; larger dialogue text.
 - **Languages**: Simplified Chinese, Traditional Chinese and Korean following the game language, Japanese with the [Japanese patch](https://dlaqe2334.github.io/LOM-JPMOD/), English with an English patch; can also be chosen in settings.
 - **Export diagnostics**: ESC → Settings → **Export diagnostics** packs logs and settings to the desktop (no saves); also in the installer.
-- **Conflict detection**: warns about conflicting old mods at the top of settings; if another mod uses the same key, this mod gives it up.
+- **Conflict detection**: warns about conflicting old mods at the top of settings (mods that only change the same game code alongside this one and work with it aren't flagged); if another mod uses the same key, this mod gives it up.
 - **Export legend**: export this playthrough's legend as a txt at any time from Status → Legend.
 - **Faster start**: the title animation is sped up, and the installer can skip the opening logos.
 - **Also**: choose who appears on the title screen; the lecture hall shows everything unlocked; the game can keep running in the background (off by default); the window's top right shows each version's changes and a red note when a new version is out.

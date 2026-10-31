@@ -87,6 +87,24 @@ internal static class PanelTheme
 	/// <summary>提示框的底图（按当前的不透明度）。</summary>
 	public static Texture2D ToastBackground => Framed(new Color(0.08f, 0.07f, 0.06f, ToastOpacity), ToastEdge);
 
+	private static Sprite _toastSprite, _toastHoverSprite;
+
+	/// <summary>
+	/// 贴在游戏界面上的 uGUI 小按钮（如选项旁的「一键设置」）的底图，和提示框一样：墨色底、褐色细边；
+	/// hover 是悬停时的，底色亮一些。配合 Image.Type.Sliced。
+	/// </summary>
+	public static Sprite ToastSprite(bool hover)
+	{
+		Texture2D texture = hover ? Framed(new Color(0.2f, 0.17f, 0.14f, ToastOpacity), ToastEdge) : ToastBackground;
+		ref Sprite sprite = ref hover ? ref _toastHoverSprite : ref _toastSprite;
+		if (sprite == null || sprite.texture != texture)
+		{
+			sprite = Sprite.Create(texture, new Rect(0, 0, 5, 5), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(2, 2, 2, 2));
+			sprite.hideFlags = HideFlags.HideAndDontSave;
+		}
+		return sprite;
+	}
+
 	/// <summary>画提示框前调一下：不透明度改了马上生效，不用重建样式。</summary>
 	public static GUIStyle Sync(GUIStyle toast)
 	{

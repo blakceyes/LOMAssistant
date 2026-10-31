@@ -63,6 +63,8 @@ public static class StoryJump
 		/// <summary>没列出来的岔口（只影响数值、好感或对白）。</summary>
 		public int Minor;
 		public readonly List<string> Notes = new List<string>();
+		/// <summary>目标这一段里看条件分的岔：分支判断名 → 走第几支（0 = 以上都不满足）。没列的按游戏判断。</summary>
+		public readonly Dictionary<string, int> Arms = new Dictionary<string, int>();
 	}
 
 	public static string ReturnSave { get; private set; }
@@ -198,6 +200,7 @@ public static class StoryJump
 		plan.Commands.Clear();
 		plan.Effects.Clear();
 		plan.Notes.Clear();
+		plan.Arms.Clear();
 		plan.Records = 0;
 		plan.Minor = 0;
 		plan.Unreachable = false;
@@ -253,6 +256,7 @@ public static class StoryJump
 			}
 		}
 		Walk(plan, plan.Mission, plan.Script, null);
+		TargetBranches(plan);
 		// 目标没有固定日期（「任意时间」的主线，比如围攻唐门）：用中间走过的最后一站有日期的主线的日期
 		plan.ToRounds = plan.Mission.From ?? plan.Between.Where(x => x.From != null).Select(x => x.From).LastOrDefault();
 		if (plan.Unreachable)
@@ -360,6 +364,55 @@ public static class StoryJump
 			at = exit.Target;
 		}
 		return last;
+	}
+
+	/// <summary>
+	/// 目标这一段里看条件分的岔（分支判断）：没读过的对白在哪一支，默认走哪一支（玩家可以改，或选「按游戏判断」）。
+	/// 跳过去以后这一段判断到它时，先把这一支的条件补上，补不上的（随机、物品、时间）直接走这一支，见 JumpArms。
+	/// </summary>
+	private static void TargetBranches(Plan plan)
+	{
+		StoryScript s = StoryScripts.Get(plan.Script);
+		if (s == null)
+		{
+			return;
+		}
+		ReadStorySystem read = ReadStorySystem.Instance;
+		// 分支判断名 → 第几支 → 这一支里没读过的对白有几句
+		var arms = new Dictionary<string, Dictionary<int, int>>(StringComparer.Ordinal);
+		var order = new List<string>();
+		foreach (var (path, _, key) in s.Talk)
+		{
+			bool unread = read != null && !read.ExistKey(key);
+			foreach (StoryStep step in path.Where(st => st.Kind == StoryStep.Branch))
+			{
+				if (!arms.TryGetValue(step.Key, out Dictionary<int, int> count))
+				{
+					arms[step.Key] = count = new Dictionary<int, int>();
+					order.Add(step.Key);
+				}
+				count.TryGetValue(step.Arm, out int n);
+				count[step.Arm] = n + (unread ? 1 : 0);
+			}
+		}
+		foreach (string name in order)
+		{
+			Dictionary<int, int> count = arms[name];
+			if (!count.Values.Any(n => n > 0))
+			{
+				continue;
+			}
+			// 第 1、2… 支在前，「以上都不满足」放最后
+			List<int> list = count.Keys.OrderBy(a => a == 0 ? int.MaxValue : a).ToList();
+			var labels = new List<string> { "按游戏判断" };
+			labels.AddRange(list.Select(a => Short(RichText.Strip(DataHelper.SwitchBranchCondition(name, a)), 40) + (count[a] > 0 ? $"　（没读过 {count[a]} 句）" : "")));
+			int most = list.OrderByDescending(a => count[a]).First();
+			int picked = ChooseNamed(plan, plan.Mission, plan.Mission.Key + "|" + s.Name + "|条件" + name, StoryScripts.SegmentName(s.Name), labels, list.IndexOf(most) + 1, true);
+			if (picked > 0)
+			{
+				plan.Arms[name] = list[picked - 1];
+			}
+		}
 	}
 
 	// 岔口：两条路以上才问；返回选的第几条
@@ -630,6 +683,7 @@ public static class StoryJump
 			player.SetGameTime(r / 36 + 1, r % 36 / 3 + 1, (MonthStageType)(r % 3 + 1));
 		}
 		missions.SetKey(plan.Mission.Main ? "Main" : plan.Mission.Series, plan.Mission.Key);
+		JumpArms.Set(plan.Arms);
 		ReturnSave = back;
 		ReturnTitle = plan.Title;
 		NoteOpen = true;
@@ -684,11 +738,82 @@ public static class StoryJump
 		{
 			return;
 		}
+		JumpArms.Set(null);
 		LOMAssistant.Features.AnytimeSave.AnytimeSave.Instance.LoadFile(ReturnSave);
 		NoteOpen = false;
 	}
 
 	public static bool Enabled => ConfigManager.EnableStoryJump.Value;
+}
+
+/// <summary>
+/// 跳过去以后，目标那一段里的分支判断按确认页选的那一支走：判断到它时先把这一支的条件补上（属性、好感、旗标，同「一键设置」），
+/// 补不上的（随机、物品、时间，或前面的一支也成立）直接给这一支的结果。每个判断只管一次，回到地图、读档后作废。
+/// </summary>
+internal static class JumpArms
+{
+	private static readonly Dictionary<string, int> Arms = new Dictionary<string, int>(StringComparer.Ordinal);
+	private static bool _hooked;
+
+	public static void Set(Dictionary<string, int> arms)
+	{
+		Arms.Clear();
+		if (arms != null)
+		{
+			foreach (var pair in arms)
+			{
+				Arms[pair.Key] = pair.Value;
+			}
+		}
+		if (!_hooked)
+		{
+			_hooked = true;
+			UnityEngine.SceneManagement.SceneManager.activeSceneChanged += (from, to) =>
+			{
+				if (to.name != "Story")
+				{
+					Arms.Clear();
+				}
+			};
+		}
+	}
+
+	[HarmonyLib.HarmonyPostfix]
+	[HarmonyLib.HarmonyPatch(typeof(SwitchResultData), nameof(SwitchResultData.Execute))]
+	public static void Execute_Postfix(SwitchResultData __instance, ref int __result)
+	{
+		try
+		{
+			if (Arms.Count == 0 || !Arms.TryGetValue(__instance.name, out int arm) || LOMAssistant.Features.AnytimeSave.AnytimeSave.Replaying)
+			{
+				return;
+			}
+			Arms.Remove(__instance.name);
+			bool byCount = __instance.GetFieldValue<bool>("_useCount");
+			int arms = byCount ? __instance.GetFieldValue<List<ValueCompareItem>>("_countItems").Count : __instance.GetFieldValue<List<ConditionResultItem>>("_items").Count;
+			int want = arm == 0 || arm > arms ? arms + 1 : arm;
+			if (__result == want)
+			{
+				return;
+			}
+			string how = "直接走这一支";
+			if (!byCount && want <= arms)
+			{
+				ConditionResultItem item = __instance.GetFieldValue<List<ConditionResultItem>>("_items")[want - 1];
+				List<ConditionSolver.Write> writes = ConditionSolver.Satisfy(item);
+				if (writes != null && writes.All(ConditionSolver.Apply))
+				{
+					how = "补上条件：" + string.Join("，", writes.Select(w => w.Target + "=" + w.Value).ToArray());
+				}
+			}
+			FileLogger.Log($"[剧情跳转] {__instance.name}：游戏判断第 {__result} 支，按选的走第 {want} 支，{how}");
+			__result = want;
+		}
+		catch (Exception ex)
+		{
+			FileLogger.LogWarning("[剧情跳转] 按选的分支走失败，照游戏判断: " + ex.Message);
+		}
+	}
 }
 
 /// <summary>

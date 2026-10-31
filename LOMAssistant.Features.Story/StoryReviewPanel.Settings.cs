@@ -96,6 +96,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.ShowBranchChecks, "显示分支判断"),
 				Row(ConfigManager.ShowFlagChanges, "显示旗标变化"),
 				Row(ConfigManager.EnableEventPicker, "随机事件自选"),
+				Row(ConfigManager.ForceUnmetEvents, "强行触发条件没满足的事件"),
 				Row(ConfigManager.EnableOneClickUnlock, "锁住的选项一键设置"),
 				Row(ConfigManager.EnableOptionInfo, "选项提示、判定记录"),
 				Row(ConfigManager.ShowItemUses, "物品说明里写用途"),

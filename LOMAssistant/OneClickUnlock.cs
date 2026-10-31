@@ -68,7 +68,8 @@ internal static class ConditionSolver
 		return best;
 	}
 
-	private static List<Write> Satisfy(ConditionResultItem item)
+	/// <summary>让一组条件（分支判断的一支）成立要写的值：满足时为空列表，做不到为 null。</summary>
+	public static List<Write> Satisfy(ConditionResultItem item)
 	{
 		var parts = item.GetFieldValue<List<StatCompareItem>>("_items").Select(SatisfyCompare).ToList();
 		if (parts.Count == 0) return null;
@@ -317,22 +318,19 @@ internal static class OneClickUnlockPatch
 	{
 		var root = new GameObject(ButtonName, typeof(RectTransform), typeof(Image), typeof(Button));
 		root.transform.SetParent(line.transform, false);
+		// 和浮在游戏画面上的提示框一样：墨色底、褐色细边、宣纸色字，悬停时底色亮一些
 		var image = root.GetComponent<Image>();
 		image.color = Color.white;
+		image.type = Image.Type.Sliced;
 		var button = root.GetComponent<Button>();
 		button.targetGraphic = image;
 		button.navigation = new Navigation { mode = Navigation.Mode.None };
-		ColorBlock colors = button.colors;
-		colors.normalColor = new Color(0.15f, 0.18f, 0.21f, 1f);
-		colors.highlightedColor = new Color(0.25f, 0.32f, 0.39f, 1f);
-		colors.pressedColor = new Color(0.22f, 0.37f, 0.51f, 1f);
-		colors.selectedColor = colors.highlightedColor;
-		button.colors = colors;
+		button.transition = Selectable.Transition.SpriteSwap;
 		var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
 		labelObject.transform.SetParent(root.transform, false);
 		Text label = labelObject.GetComponent<Text>();
 		label.alignment = TextAnchor.MiddleCenter;
-		label.color = new Color(0.94f, 0.95f, 0.96f, 1f);
+		label.color = PanelTheme.ToastText;
 		label.raycastTarget = false;
 		label.font = line.font;
 		label.text = TextConverter.ForDisplay("一键设置");
@@ -346,6 +344,9 @@ internal static class OneClickUnlockPatch
 	/// <summary>放在选项文字第一行的右边。</summary>
 	private static void Place(Button button, Text line)
 	{
+		// 底图每次放的时候取：设置里改了提示框不透明度也跟着变
+		((Image)button.targetGraphic).sprite = PanelTheme.ToastSprite(false);
+		button.spriteState = new SpriteState { highlightedSprite = PanelTheme.ToastSprite(true), pressedSprite = PanelTheme.ToastSprite(true), selectedSprite = PanelTheme.ToastSprite(true) };
 		Text label = button.GetComponentInChildren<Text>();
 		label.fontSize = Mathf.Max(10, Mathf.RoundToInt(line.fontSize * 0.6f));
 		Rect rect = line.rectTransform.rect;

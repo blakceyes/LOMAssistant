@@ -5,6 +5,7 @@ using HarmonyLib;
 using LOMAssistant.Config;
 using LOMAssistant.Features.AnytimeSave;
 using MoonSharp.Interpreter;
+using Mortal.Core;
 using Mortal.Story;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -15,6 +16,7 @@ namespace LOMAssistant;
 /// <summary>
 /// 随机事件自选：剧本走到 checkpointmanager.Position（工作、闲逛等按权重抽一个事件）时先停下，
 /// 列出这次满足条件的事件，选一个就触发它，也可以选「随机」照游戏原本的概率抽。
+/// 出现条件没满足的事件折叠在下面（写明要什么条件），点了也照样触发。
 /// 条件里带随机值的分支判断（checkpointmanager.Switch，比如飞天门修炼时「随机值 ≤ 小梅好感」就被小梅拉去跑步）也一样停下，
 /// 列出这次能走到的几条路和概率，选哪条就把这次判断里的随机值定成让它成立的数（其他条件照常判断，见 SwitchRandom）。
 /// 停下的办法参考赵活系统（Toufff，MIT）：把剧本里的调用包一层，在 Lua 协程里等待，选完再执行原调用。
@@ -34,6 +36,10 @@ public class EventPicker : MonoBehaviour
 
 	/// <summary>选中的事件，游戏下次从这个事件池抽结果时用掉。</summary>
 	internal static PositionEventData Pending;
+	/// <summary>选中的是出现条件没满足的事件：抽结果时不再看条件。</summary>
+	private static bool _pendingUnmet;
+	/// <summary>条件没满足的事件展开着（这次开游戏期间记住）。</summary>
+	private static bool _showUnmet;
 
 	public static bool IsWaiting => _state == State.Waiting;
 
@@ -49,7 +55,12 @@ public class EventPicker : MonoBehaviour
 		public int Rate;
 		/// <summary>这个事件的剧情一句都没读过（和地图建筑提示的「没看过」一样）。</summary>
 		public bool Unread;
+		/// <summary>出现条件没满足（排在能触发的后面，不参与随机和键盘选择）。</summary>
+		public bool Unmet;
 	}
+
+	/// <summary>能触发的有几个（Choices 里排在前面）。</summary>
+	private static int Met => Choices.Count(c => !c.Unmet);
 
 	/// <summary>正在问的是分支判断（不是事件池）时，判断名。</summary>
 	private static string _switch;
@@ -80,6 +91,7 @@ public class EventPicker : MonoBehaviour
 		_switch = null;
 		Choices.Clear();
 		Pending = null;
+		_pendingUnmet = false;
 		SwitchRandom.Pending = null;
 	}
 
@@ -138,19 +150,36 @@ public class EventPicker : MonoBehaviour
 				return false;
 			}
 			Choices.Clear();
+			var unmet = new List<Choice>();
 			foreach (PositionEventData data in PositionEventCache.Instance.GetPositionEvents(pool))
 			{
 				int rate = data.GetRate();
-				if (rate > 0)
+				// 条件没满足的只在设置里打开「强行触发条件没满足的事件」时列出
+				string condition = rate > 0 || !ConfigManager.ForceUnmetEvents.Value ? null : UnmetCondition(data);
+				if (rate <= 0 && condition == null)
 				{
-					Choices.Add(new Choice { Data = data, Key = data.name, Rate = rate, Name = TextConverter.ToSimplified(DataHelper.GetEventName(data)), Effects = PositionEventCache.Instance.GetCertainEffects(data), Unread = MapEventHints.Unread(PositionEventCache.Instance.ResultScript(data)) });
+					continue;
+				}
+				string effects = PositionEventCache.Instance.GetCertainEffects(data);
+				var choice = new Choice { Data = data, Key = data.name, Rate = rate, Name = TextConverter.ToSimplified(DataHelper.GetEventName(data)), Effects = effects, Unread = MapEventHints.Unread(PositionEventCache.Instance.ResultScript(data)) };
+				if (condition != null)
+				{
+					choice.Unmet = true;
+					choice.Effects = "（要 " + condition + "）" + (string.IsNullOrEmpty(effects) ? "" : "\n" + effects);
+					unmet.Add(choice);
+				}
+				else
+				{
+					Choices.Add(choice);
 				}
 			}
+			// 能触发的不到两个时照旧不问（不然只有一个能触发的地方每次都要停下来）
 			if (Choices.Count < 2)
 			{
 				Choices.Clear();
 				return false;
 			}
+			Choices.AddRange(unmet);
 			_state = State.Waiting;
 			_pool = pool;
 			_switch = null;
@@ -167,12 +196,28 @@ public class EventPicker : MonoBehaviour
 		}
 	}
 
+	/// <summary>事件的出现条件没满足时，条件写成一句（带现在的值）；满足、没设条件或读不出时返回 null。</summary>
+	private static string UnmetCondition(PositionEventData data)
+	{
+		if (!data.GetFieldValue<bool>("_toggleCondition"))
+		{
+			return null;
+		}
+		ConditionResultItem item = data.GetFieldValue<ConditionResultItem>("_activeCondition");
+		if (item == null || item.Check())
+		{
+			return null;
+		}
+		string text = TextConverter.ToSimplifiedUnlessJapanese(DataHelper.ExtractConditions(item, out _));
+		return string.IsNullOrWhiteSpace(RichText.Strip(text)) ? null : text;
+	}
+
 	// 键盘、手柄的选中项默认停在「随机」：直接按确认就是按原本概率抽；停在第一项会让人误以为会抽到它。
 	// 设了「总是」的能走到时停在它上面
 	private static void HighlightDefault()
 	{
-		int always = Choices.FindIndex(c => EventRules.Get(c.Key) == EventRules.Always);
-		_highlight = always >= 0 ? always : Choices.Count;
+		int always = Choices.FindIndex(c => !c.Unmet && EventRules.Get(c.Key) == EventRules.Always);
+		_highlight = always >= 0 ? always : Met;
 	}
 
 	/// <summary>剧本每帧问一次：这个分支判断要不要停下来等选（条件里有随机值、能走到两条以上的路才问）。</summary>
@@ -234,7 +279,8 @@ public class EventPicker : MonoBehaviour
 		else
 		{
 			Pending = choice?.Data;
-			FileLogger.Log("[事件自选] " + _pool + "：" + (choice == null ? "随机" : DataHelper.GetEventName(choice.Data)));
+			_pendingUnmet = choice != null && choice.Unmet;
+			FileLogger.Log("[事件自选] " + _pool + "：" + (choice == null ? "随机" : DataHelper.GetEventName(choice.Data) + (choice.Unmet ? "（条件没满足）" : "")));
 		}
 		_state = State.Released;
 		Choices.Clear();
@@ -250,7 +296,9 @@ public class EventPicker : MonoBehaviour
 			return false;
 		}
 		Pending = null;
-		if (pick.GetRate() <= 0)
+		bool unmet = _pendingUnmet;
+		_pendingUnmet = false;
+		if (!unmet && pick.GetRate() <= 0)
 		{
 			FileLogger.LogWarning("[事件自选] 选中的事件现在不满足条件，按原本随机：" + DataHelper.GetEventName(pick));
 			return false;
@@ -265,7 +313,8 @@ public class EventPicker : MonoBehaviour
 		{
 			return;
 		}
-		int count = Choices.Count + 1; // 最后一项是随机
+		int met = Met;
+		int count = met + 1; // 最后一项是随机；条件没满足的只能用鼠标点
 		Keyboard kb = Keyboard.current;
 		Gamepad pad = Gamepad.current;
 		if ((kb != null && kb.upArrowKey.wasPressedThisFrame) || (pad != null && pad.dpad.up.wasPressedThisFrame))
@@ -278,7 +327,7 @@ public class EventPicker : MonoBehaviour
 		}
 		if (kb != null)
 		{
-			for (int i = 0; i < Mathf.Min(9, Choices.Count); i++)
+			for (int i = 0; i < Mathf.Min(9, met); i++)
 			{
 				if (kb[Key.Digit1 + i].wasPressedThisFrame)
 				{
@@ -289,7 +338,7 @@ public class EventPicker : MonoBehaviour
 		}
 		if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame)) || (pad != null && pad.buttonSouth.wasPressedThisFrame))
 		{
-			Choose(_highlight < Choices.Count ? Choices[_highlight] : null);
+			Choose(_highlight < met ? Choices[_highlight] : null);
 		}
 	}
 
@@ -357,7 +406,11 @@ public class EventPicker : MonoBehaviour
 	private static string Label(int i, int total)
 	{
 		Choice c = Choices[i];
-		int rate = EventRules.EffectiveRate(c.Key, c.Rate, Choices.Select(x => x.Key));
+		if (c.Unmet)
+		{
+			return c.Name + "　<color=#73644F>条件没满足</color>" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
+		}
+		int rate = EventRules.EffectiveRate(c.Key, c.Rate, Choices.Where(x => !x.Unmet).Select(x => x.Key));
 		string odds = rate == 0 && EventRules.Get(c.Key) == EventRules.Never ? "不出" : $"{rate * 100f / Mathf.Max(1, total):0.#}%";
 		return (i < 9 ? (i + 1) + ". " : "") + c.Name + $"（{odds}）" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
 	}
@@ -379,12 +432,17 @@ public class EventPicker : MonoBehaviour
 	private void DrawChoices()
 	{
 		GUILayout.Label(_switch != null ? "这次走哪条路" : "这次触发哪个事件", _title);
-		int total = Choices.Sum(c => EventRules.EffectiveRate(c.Key, c.Rate, Choices.Select(x => x.Key)));
+		int met = Met;
+		var metKeys = Choices.Where(x => !x.Unmet).Select(x => x.Key).ToList();
+		int total = Choices.Where(c => !c.Unmet).Sum(c => EventRules.EffectiveRate(c.Key, c.Rate, metKeys));
+		// 条件没满足的：默认收起，展开后列在能触发的下面
+		int shown = _showUnmet ? Choices.Count : met;
+		string fold = met < Choices.Count ? (_showUnmet ? "收起条件没满足的事件" : $"展开条件没满足的事件（{Choices.Count - met}）") : null;
 		// 窗口高度随内容变，滚动区不给高度会被压成一行：按内容算出高度，超过屏幕七成再滚动
 		float ruleWidth = 64f * _scale;
 		float width = _windowRect.width - _window.padding.horizontal - 24f * _scale - ruleWidth * 2f - 8f * _scale;
 		float height = 0f;
-		for (int i = 0; i < Choices.Count; i++)
+		for (int i = 0; i < shown; i++)
 		{
 			height += _button.CalcHeight(new GUIContent(Label(i, total)), width) + _button.margin.vertical;
 			if (!string.IsNullOrEmpty(Choices[i].Effects))
@@ -392,16 +450,36 @@ public class EventPicker : MonoBehaviour
 				height += _effects.CalcHeight(new GUIContent(Choices[i].Effects), width) + _effects.margin.vertical;
 			}
 		}
+		if (fold != null)
+		{
+			height += _rule.CalcHeight(new GUIContent(fold), width) + _rule.margin.vertical;
+			if (_showUnmet)
+			{
+				height += _effects.CalcHeight(new GUIContent(Warning), width) + _effects.margin.vertical;
+			}
+		}
 		_scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(Mathf.Min(height + 4f, Screen.height * 0.7f)));
-		for (int i = 0; i < Choices.Count; i++)
+		for (int i = 0; i < shown; i++)
 		{
 			Choice c = Choices[i];
+			if (i == met && fold != null)
+			{
+				DrawFold(fold);
+			}
 			string text = Label(i, total);
 			GUILayout.BeginHorizontal();
-			if (GUILayout.Button(text, i == _highlight ? _highlighted : _button))
+			if (GUILayout.Button(text, !c.Unmet && i == _highlight ? _highlighted : _button))
 			{
 				Choose(c);
 				GUIUtility.ExitGUI();
+			}
+			// 条件没满足的不参与随机，不给「总是」「不出」
+			if (c.Unmet)
+			{
+				GUILayout.Space(ruleWidth * 2f + _rule.margin.left * 2f);
+				GUILayout.EndHorizontal();
+				GUILayout.Label(c.Effects, _effects);
+				continue;
 			}
 			// 「总是」：以后这里能抽到它就直接触发它；「不出」：以后不会抽到它。再点一次取消
 			int rule = EventRules.Get(c.Key);
@@ -419,14 +497,34 @@ public class EventPicker : MonoBehaviour
 				GUILayout.Label(c.Effects, _effects);
 			}
 		}
+		if (!_showUnmet && fold != null)
+		{
+			DrawFold(fold);
+		}
 		GUILayout.EndScrollView();
 		GUILayout.Space(6f * _scale);
-		if (GUILayout.Button(Choices.Any(c => EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）", _highlight == Choices.Count ? _randomHighlighted : _random))
+		if (GUILayout.Button(Choices.Any(c => !c.Unmet && EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）", _highlight == met ? _randomHighlighted : _random))
 		{
 			Choose(null);
 			GUIUtility.ExitGUI();
 		}
 		GUI.DragWindow();
+	}
+
+	private const string Warning = "<color=#A3302A>点了会无视条件直接触发，不改旗标，之后的剧情可能对不上</color>";
+
+	private void DrawFold(string text)
+	{
+		if (GUILayout.Button(text, _rule))
+		{
+			_showUnmet = !_showUnmet;
+			_lastLayout = null;
+			GUIUtility.ExitGUI();
+		}
+		if (_showUnmet)
+		{
+			GUILayout.Label(Warning, _effects);
+		}
 	}
 }
 

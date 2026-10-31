@@ -11,7 +11,8 @@ namespace LOMAssistant;
 
 /// <summary>
 /// 检测和其他 Mod 的冲突：等所有 Mod 都加载完，看本 Mod 改过的游戏方法有没有被别的 Mod 也改了
-/// （例如旧版骰子大师、多功能 Mod 会让选项提示失效）。不靠文件名猜，只报真正撞到的。
+/// （例如旧版骰子大师、多功能 Mod 会让选项提示失效）。不靠文件名猜，只报真正撞到的：
+/// 对方能拦下原方法、改返回值或改写代码的才报，只在前后加东西的能一起用，只记日志。
 /// 结果写进日志，并显示在 F8 面板顶部。
 /// </summary>
 public static class ConflictDetector
@@ -72,6 +73,12 @@ public static class ConflictDetector
 					{
 						owners[owner] = assembly;
 					}
+					// 只是在前后各加各的（不拦原方法、不改结果、不改写代码）：能一起用，只记日志
+					if (!Intrudes(info, owner))
+					{
+						FileLogger.Log($"[冲突检测] {owner} 也改了 {method.DeclaringType?.Name}.{method.Name}，只是各加各的，能一起用，不提示");
+						continue;
+					}
 					if (!clashes.TryGetValue(owner, out List<string> list))
 					{
 						clashes[owner] = list = new List<string>();
@@ -129,6 +136,18 @@ public static class ConflictDetector
 			}
 		}
 		return names;
+	}
+
+	/// <summary>
+	/// owner 在这个方法上的补丁会不会让本 Mod 的改动失效：前置补丁返回 bool（能拦下原方法）、改写代码（transpiler）、
+	/// 改返回值（ref __result）才算；只在前后加东西的，两边各改各的，能一起用。
+	/// </summary>
+	private static bool Intrudes(Patches info, string owner)
+	{
+		bool ChangesResult(Patch p) => p.PatchMethod.GetParameters().Any(x => x.Name == "__result" && x.ParameterType.IsByRef);
+		return info.Prefixes.Any(p => p.owner == owner && (p.PatchMethod.ReturnType == typeof(bool) || ChangesResult(p)))
+			|| info.Postfixes.Any(p => p.owner == owner && ChangesResult(p))
+			|| info.Transpilers.Any(p => p.owner == owner);
 	}
 
 	// 某个 Harmony 实例（owner）打在这个方法上的补丁所在的程序集
