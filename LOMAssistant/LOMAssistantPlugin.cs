@@ -120,9 +120,10 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 				EnsurePatched("Roll", AccessTools.Method(typeof(DiceMenuDialog), "Roll"), "Roll_Prefix");
 				EnsurePatched("CheckRevolution", AccessTools.Method(typeof(DiceMenuDialog), "CheckRevolution"), "CheckRevolution_Prefix");
 			}
-			if (ConfigManager.EnableLibraryDisplay.Value)
+			if (ConfigManager.EnableLibraryDisplay.Value > 0)
 			{
 				TryPatchAll(typeof(LibraryDisplayPatch));
+				base.gameObject.AddComponent<LibraryHoverHint>();
 				LogInfo("讲经堂显示补丁已应用。");
 			}
 			if (ConfigManager.EnableCombatAssist.Value)
