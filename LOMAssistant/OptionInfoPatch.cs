@@ -139,11 +139,26 @@ internal static class OptionInfoPatch
 	{
 		// 本 Mod 自己取选项原文（剧情回顾里显示）时不加结果说明，也不算游戏弹出的菜单；
 		// 设成「鼠标悬停」「不显示」时也不接在选项后面（悬停时由 OptionHoverHint 另外显示）
-		if (Raw || ConfigManager.OptionResultMode.Value != 0)
+		if (Raw)
 		{
 			return;
 		}
+		if (ConfigManager.OptionResultMode.Value != 0)
+		{
+			// 强行放出来的选项不看这个设置，总要标出条件没满足
+			if (HiddenOptions.Unmet(key))
+			{
+				__result = __result + TextConverter.ForDisplay("\n<size=16>(" + HiddenOptions.Mark + ")</size>");
+			}
+			return;
+		}
+		// 强行放出来、条件没满足的选项：这一行只标红字，条件长、会把后果挤掉，放在悬停提示里
 		string note = OptionNote(key);
+		if (HiddenOptions.Unmet(key))
+		{
+			string rest = NoteOf(key);
+			note = HiddenOptions.Mark + (rest.Length > 0 ? "；" + rest : "");
+		}
 		if (note.Length > 0)
 		{
 			__result = __result + TextConverter.ForDisplay("\n<size=16>(" + ColorDeltas(note) + ")</size>");
@@ -168,6 +183,14 @@ internal static class OptionInfoPatch
 	/// 满足某个分支条件就直接接一段剧情的写成「若 条件：触发剧情」。没有就返回空串。
 	/// </summary>
 	internal static string OptionNote(string key)
+	{
+		// 条件没满足、强行放出来的选项（见 HiddenOptions）：先写条件（悬停提示用）
+		string forced = HiddenOptions.Note(key);
+		string note = NoteOf(key);
+		return forced.Length == 0 ? note : note.Length == 0 ? forced : forced + "；" + note;
+	}
+
+	private static string NoteOf(string key)
 	{
 		try
 		{
@@ -630,7 +653,8 @@ internal sealed class OptionHoverHint : MonoBehaviour
 
 	private void Update()
 	{
-		if (ConfigManager.OptionResultMode.Value != 1)
+		// 选项后果设成悬停时都看；其余时候只为强行放出来的选项显示条件
+		if (ConfigManager.OptionResultMode.Value != 1 && !HiddenOptions.Any)
 		{
 			return;
 		}
@@ -662,7 +686,7 @@ internal sealed class OptionHoverHint : MonoBehaviour
 
 	private void OnGUI()
 	{
-		if (ConfigManager.OptionResultMode.Value != 1 || UiHider.Active || Event.current.type != EventType.Repaint)
+		if ((ConfigManager.OptionResultMode.Value != 1 && !HiddenOptions.Any) || UiHider.Active || Event.current.type != EventType.Repaint)
 		{
 			return;
 		}
@@ -717,7 +741,11 @@ internal sealed class OptionHoverHint : MonoBehaviour
 		{
 			OptionInfoPatch.ButtonKeys.TryGetValue(button, out key);
 		}
-		return key != null ? OptionInfoPatch.OptionNote(key) : "";
+		if (key == null)
+		{
+			return "";
+		}
+		return ConfigManager.OptionResultMode.Value == 1 ? OptionInfoPatch.OptionNote(key) : HiddenOptions.Note(key);
 	}
 
 	private void Draw(Button button, string note, Button[] group)

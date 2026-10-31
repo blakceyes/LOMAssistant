@@ -196,7 +196,9 @@ public partial class AnytimeSave : MonoBehaviour
 	internal string PrepareScript(LuaEnvironment env, string code, string name)
 	{
 		if (!name.EndsWith(".LuaScript", StringComparison.Ordinal) || name == "tmp.LuaScript") return code;
-		string hash = Hash(code);
+		// 版本核对按原剧本：「强行选条件没满足的选项」改过的剧本（见 HiddenOptions）也按改之前的算
+		string original = LOMAssistant.HiddenOptions.Original(code);
+		string hash = Hash(original);
 		string shortName = name.Substring(0, name.Length - 10);
 		if (env.Interpreter != currentInterpreter)
 		{
@@ -212,14 +214,15 @@ public partial class AnytimeSave : MonoBehaviour
 		}
 		if (stamp == null) stamps.Add(new ScriptStamp { name = name, hash = hash });
 		Bind(env.Interpreter);
-		// 版本核对用的是原剧本的哈希；事件自选的等待先包上，再套记录/回放包装。包装结果只取决于剧本内容，按哈希缓存
-		if (!wrapped.TryGetValue(hash, out string result))
+		// 版本核对用的是原剧本的哈希；事件自选的等待先包上，再套记录/回放包装。包装结果只取决于剧本内容，按（改过的）内容的哈希缓存
+		string contentHash = ReferenceEquals(original, code) ? hash : Hash(code);
+		if (!wrapped.TryGetValue(contentHash, out string result))
 		{
 			if (wrapped.Count >= 40)
 			{
 				wrapped.Clear();
 			}
-			result = wrapped[hash] = scriptPrefix + "\n" + Transform(EventPicker.Instrument(code, name.EndsWith(".LuaScript") ? name.Substring(0, name.Length - ".LuaScript".Length) : name));
+			result = wrapped[contentHash] =scriptPrefix + "\n" + Transform(EventPicker.Instrument(code, name.EndsWith(".LuaScript") ? name.Substring(0, name.Length - ".LuaScript".Length) : name));
 		}
 		return result;
 	}

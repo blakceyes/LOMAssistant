@@ -32,7 +32,11 @@ public class EventPicker : MonoBehaviour
 	private static State _state;
 	private static string _pool;
 	private static readonly List<Choice> Choices = new List<Choice>();
+	/// <summary>键盘、手柄停在哪：事件在 Choices 里的序号，或 FoldSlot（展开、收起按钮）、RandomSlot（随机）。</summary>
 	private static int _highlight;
+	private const int RandomSlot = -1, FoldSlot = -2;
+	/// <summary>键盘、手柄换了选中项，下一次画的时候把它滚进视野。</summary>
+	private static bool _scrollToHighlight;
 
 	/// <summary>选中的事件，游戏下次从这个事件池抽结果时用掉。</summary>
 	internal static PositionEventData Pending;
@@ -67,7 +71,7 @@ public class EventPicker : MonoBehaviour
 
 	private float _scale = -1f;
 	private int _fontMode = -1;
-	private GUIStyle _label, _title, _button, _highlighted, _effects, _window, _random, _randomHighlighted, _rule, _ruleOn;
+	private GUIStyle _label, _title, _button, _highlighted, _effects, _window, _random, _randomHighlighted, _rule, _ruleOn, _ruleHighlighted;
 	private bool _dark;
 	private float _opacity;
 	private Rect _windowRect;
@@ -217,7 +221,7 @@ public class EventPicker : MonoBehaviour
 	private static void HighlightDefault()
 	{
 		int always = Choices.FindIndex(c => !c.Unmet && EventRules.Get(c.Key) == EventRules.Always);
-		_highlight = always >= 0 ? always : Met;
+		_highlight = always >= 0 ? always : RandomSlot;
 	}
 
 	/// <summary>剧本每帧问一次：这个分支判断要不要停下来等选（条件里有随机值、能走到两条以上的路才问）。</summary>
@@ -314,16 +318,19 @@ public class EventPicker : MonoBehaviour
 			return;
 		}
 		int met = Met;
-		int count = met + 1; // 最后一项是随机；条件没满足的只能用鼠标点
+		List<int> order = NavOrder();
+		int at = Mathf.Max(0, order.IndexOf(_highlight));
 		Keyboard kb = Keyboard.current;
 		Gamepad pad = Gamepad.current;
 		if ((kb != null && kb.upArrowKey.wasPressedThisFrame) || (pad != null && pad.dpad.up.wasPressedThisFrame))
 		{
-			_highlight = (_highlight + count - 1) % count;
+			_highlight = order[(at + order.Count - 1) % order.Count];
+			_scrollToHighlight = true;
 		}
 		if ((kb != null && kb.downArrowKey.wasPressedThisFrame) || (pad != null && pad.dpad.down.wasPressedThisFrame))
 		{
-			_highlight = (_highlight + 1) % count;
+			_highlight = order[(at + 1) % order.Count];
+			_scrollToHighlight = true;
 		}
 		if (kb != null)
 		{
@@ -338,7 +345,48 @@ public class EventPicker : MonoBehaviour
 		}
 		if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame)) || (pad != null && pad.buttonSouth.wasPressedThisFrame))
 		{
-			Choose(_highlight < met ? Choices[_highlight] : null);
+			if (_highlight == FoldSlot)
+			{
+				ToggleUnmet();
+			}
+			else
+			{
+				Choose(_highlight >= 0 && _highlight < Choices.Count ? Choices[_highlight] : null);
+			}
+		}
+	}
+
+	/// <summary>键盘、手柄上下切换的顺序，和画出来的一样：能触发的事件、展开收起按钮、（展开时）条件没满足的事件、随机。</summary>
+	private static List<int> NavOrder()
+	{
+		var order = new List<int>();
+		for (int i = 0; i < Choices.Count; i++)
+		{
+			if (!Choices[i].Unmet)
+			{
+				order.Add(i);
+			}
+		}
+		if (order.Count < Choices.Count)
+		{
+			order.Add(FoldSlot);
+			if (_showUnmet)
+			{
+				order.AddRange(Enumerable.Range(0, Choices.Count).Where(i => Choices[i].Unmet));
+			}
+		}
+		order.Add(RandomSlot);
+		return order;
+	}
+
+	private void ToggleUnmet()
+	{
+		_showUnmet = !_showUnmet;
+		_lastLayout = null;
+		// 收起时停在条件没满足的事件上：回到按钮上
+		if (!_showUnmet && _highlight >= 0 && _highlight < Choices.Count && Choices[_highlight].Unmet)
+		{
+			_highlight = FoldSlot;
 		}
 	}
 
@@ -362,6 +410,9 @@ public class EventPicker : MonoBehaviour
 		_rule.margin = new RectOffset((int)(4f * scale), 0, (int)(3f * scale), (int)(3f * scale));
 		_ruleOn = PanelTheme.Primary(scale, 16);
 		_ruleOn.margin = _rule.margin;
+		_ruleHighlighted = new GUIStyle(_rule) { fontStyle = FontStyle.Bold };
+		_ruleHighlighted.normal.background = _ruleHighlighted.hover.background = PanelTheme.Framed(PanelTheme.PaperDeep, PanelTheme.Cinnabar);
+		_ruleHighlighted.normal.textColor = _ruleHighlighted.hover.textColor = PanelTheme.Cinnabar;
 		_random = PanelTheme.Primary(scale, 19);
 		// 手柄、键盘停在「随机」上时和停在事件上一样：深一点的底、朱砂边框和字
 		_randomHighlighted = new GUIStyle(_highlighted) { alignment = TextAnchor.MiddleCenter };
@@ -458,20 +509,25 @@ public class EventPicker : MonoBehaviour
 				height += _effects.CalcHeight(new GUIContent(Warning), width) + _effects.margin.vertical;
 			}
 		}
-		_scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(Mathf.Min(height + 4f, Screen.height * 0.7f)));
+		float viewHeight = Mathf.Min(height + 4f, Screen.height * 0.7f);
+		_scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(viewHeight));
 		for (int i = 0; i < shown; i++)
 		{
 			Choice c = Choices[i];
 			if (i == met && fold != null)
 			{
-				DrawFold(fold);
+				DrawFold(fold, viewHeight);
 			}
 			string text = Label(i, total);
 			GUILayout.BeginHorizontal();
-			if (GUILayout.Button(text, !c.Unmet && i == _highlight ? _highlighted : _button))
+			if (GUILayout.Button(text, i == _highlight ? _highlighted : _button))
 			{
 				Choose(c);
 				GUIUtility.ExitGUI();
+			}
+			if (i == _highlight)
+			{
+				ScrollTo(GUILayoutUtility.GetLastRect(), viewHeight);
 			}
 			// 条件没满足的不参与随机，不给「总是」「不出」
 			if (c.Unmet)
@@ -499,11 +555,11 @@ public class EventPicker : MonoBehaviour
 		}
 		if (!_showUnmet && fold != null)
 		{
-			DrawFold(fold);
+			DrawFold(fold, viewHeight);
 		}
 		GUILayout.EndScrollView();
 		GUILayout.Space(6f * _scale);
-		if (GUILayout.Button(Choices.Any(c => !c.Unmet && EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）", _highlight == met ? _randomHighlighted : _random))
+		if (GUILayout.Button(Choices.Any(c => !c.Unmet && EventRules.Get(c.Key) != EventRules.None) ? "随机（按上面的概率）" : "随机（按原本概率）", _highlight == RandomSlot ? _randomHighlighted : _random))
 		{
 			Choose(null);
 			GUIUtility.ExitGUI();
@@ -511,15 +567,36 @@ public class EventPicker : MonoBehaviour
 		GUI.DragWindow();
 	}
 
+	// 键盘、手柄选中的这一项在滚动区外面时，滚到看得见（画的时候才知道它在哪）
+	private void ScrollTo(Rect rect, float viewHeight)
+	{
+		if (!_scrollToHighlight || Event.current.type != EventType.Repaint)
+		{
+			return;
+		}
+		_scrollToHighlight = false;
+		if (rect.yMin < _scroll.y)
+		{
+			_scroll.y = rect.yMin;
+		}
+		else if (rect.yMax > _scroll.y + viewHeight)
+		{
+			_scroll.y = rect.yMax - viewHeight + 8f * _scale;
+		}
+	}
+
 	private const string Warning = "<color=#A3302A>点了会无视条件直接触发，不改旗标，之后的剧情可能对不上</color>";
 
-	private void DrawFold(string text)
+	private void DrawFold(string text, float viewHeight)
 	{
-		if (GUILayout.Button(text, _rule))
+		if (GUILayout.Button(text, _highlight == FoldSlot ? _ruleHighlighted : _rule))
 		{
-			_showUnmet = !_showUnmet;
-			_lastLayout = null;
+			ToggleUnmet();
 			GUIUtility.ExitGUI();
+		}
+		if (_highlight == FoldSlot)
+		{
+			ScrollTo(GUILayoutUtility.GetLastRect(), viewHeight);
 		}
 		if (_showUnmet)
 		{

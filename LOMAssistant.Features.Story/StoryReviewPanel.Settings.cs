@@ -98,6 +98,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.EnableEventPicker, "随机事件自选"),
 				Row(ConfigManager.ForceUnmetEvents, "强行触发条件没满足的事件"),
 				Row(ConfigManager.EnableOneClickUnlock, "锁住的选项一键设置"),
+				Row(ConfigManager.ForceUnmetOptions, "强行选条件没满足的选项"),
 				Row(ConfigManager.EnableOptionInfo, "选项提示、判定记录"),
 				Row(ConfigManager.ShowItemUses, "物品说明里写用途"),
 				new SettingRow { Element = ConfigManager.OptionResultMode, Name = "选项后果", Choices = new[] { "总是显示", "鼠标悬停", "不显示" } },

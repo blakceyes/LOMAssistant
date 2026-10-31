@@ -186,6 +186,7 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(EventPickerPatch));
 			TryPatchAll(typeof(SwitchRandom));
 			TryPatchAll(typeof(OneClickUnlockPatch));
+			TryPatchAll(typeof(HiddenOptions));
 			TryPatchAll(typeof(LOMAssistant.Features.Story.JumpArms));
 			EventPicker.Ensure(base.gameObject);
 			UiHider.Ensure(base.gameObject);

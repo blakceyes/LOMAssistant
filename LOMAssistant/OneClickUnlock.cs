@@ -157,6 +157,40 @@ internal static class ConditionSolver
 		return (r.CheckType == StatCheckType.角色數值 || r.CheckType == StatCheckType.好感度 || r.CheckType == StatCheckType.旗標) && TargetOf(r) != null;
 	}
 
+	/// <summary>
+	/// 条件里用到的旗标，按旗标本身的名字（剧本 SetFlag 用的编号）。条件表里的变量另有名字，不一定和旗标一样
+	/// （「TalkOption_03」指的是旗标 Talk_Option_03），要按变量实际指向的旗标取。
+	/// </summary>
+	public static HashSet<string> Flags(ConditionResultData data)
+	{
+		var flags = new HashSet<string>();
+		foreach (ConditionResultItem item in data.GetFieldValue<List<ConditionResultItem>>("_items") ?? new List<ConditionResultItem>())
+		{
+			foreach (StatCompareItem c in item.GetFieldValue<List<StatCompareItem>>("_items") ?? new List<StatCompareItem>())
+			{
+				CollectFlags(c.GetFieldValue<StatGroupVariable>("_value1"), flags);
+				CollectFlags(c.GetFieldValue<StatGroupVariable>("_value2"), flags);
+			}
+		}
+		return flags;
+	}
+
+	private static void CollectFlags(StatGroupVariable group, HashSet<string> flags)
+	{
+		var refs = group != null ? group.GetFieldValue<List<StatValueReference>>("_value") : null;
+		foreach (StatValueReference r in refs ?? new List<StatValueReference>())
+		{
+			if (r.CheckType == StatCheckType.旗標 && r.GetFieldValue<FlagData>("_flag") is FlagData flag && flag != null)
+			{
+				flags.Add(flag.name);
+			}
+			else if (r.CheckType == StatCheckType.數值群組)
+			{
+				CollectFlags(r.GetFieldValue<StatGroupVariable>("_statGroup"), flags);
+			}
+		}
+	}
+
 	private static object TargetOf(StatValueReference r)
 	{
 		switch (r.CheckType)
@@ -250,7 +284,8 @@ internal static class OneClickUnlockPatch
 			if (line == null) return;
 			Transform old = line.transform.Find(ButtonName);
 			Button button = __instance.GetComponent<Button>();
-			if (!ConfigManager.EnableOneClickUnlock.Value || button == null || button.interactable)
+			bool force = ConfigManager.ForceUnmetOptions.Value;
+			if (!(ConfigManager.EnableOneClickUnlock.Value || force) || button == null || button.interactable)
 			{
 				if (old != null) old.gameObject.SetActive(false);
 				return;
@@ -260,15 +295,18 @@ internal static class OneClickUnlockPatch
 			ConditionResultData data = ConditionSolver.Find(locked.Condition);
 			List<ConditionSolver.Write> writes = data != null ? ConditionSolver.Satisfy(data) : null;
 			// 条件已经满足（一项都不用改）但选项还锁着也要给按钮：读随时存档时游戏在快进回放中途决定锁不锁，
-			// 那一刻的数值和停下时不同，会出现「当前已满足、选项却锁着」，点了直接解开
-			if (writes == null)
+			// 那一刻的数值和停下时不同，会出现「当前已满足、选项却锁着」，点了直接解开。
+			// 条件改不到（随机、时间、物品）时，设置里打开了「强行选条件没满足的选项」就给「强行解锁」：不改数值直接解开
+			bool solvable = writes != null && ConfigManager.EnableOneClickUnlock.Value;
+			if (!solvable && !force)
 			{
 				if (old != null) old.gameObject.SetActive(false);
 				return;
 			}
 			Button unlock = old != null ? old.GetComponent<Button>() : Create(line);
+			unlock.GetComponentInChildren<Text>().text = TextConverter.ForDisplay(solvable ? "一键设置" : "强行解锁");
 			unlock.onClick.RemoveAllListeners();
-			unlock.onClick.AddListener(() => Unlock(__instance, button, locked.Condition, locked.Unlocked));
+			unlock.onClick.AddListener(() => Unlock(__instance, button, locked.Condition, locked.Unlocked, !solvable));
 			Place(unlock, line);
 			unlock.gameObject.SetActive(true);
 		}
@@ -278,10 +316,18 @@ internal static class OneClickUnlockPatch
 		}
 	}
 
-	private static void Unlock(NormalOptionButton row, Button button, string condition, string unlockedKey)
+	private static void Unlock(NormalOptionButton row, Button button, string condition, string unlockedKey, bool force)
 	{
 		try
 		{
+			if (force)
+			{
+				FileLogger.Log($"[强行解锁] {condition}：不改数值，直接解开 {unlockedKey}");
+				row.GetFieldValue<Text>("_source").text = unlockedKey;
+				button.interactable = true;
+				row.UpdateContent();
+				return;
+			}
 			ConditionResultData data = ConditionSolver.Find(condition);
 			List<ConditionSolver.Write> writes = data != null ? ConditionSolver.Satisfy(data) : null;
 			if (writes == null)

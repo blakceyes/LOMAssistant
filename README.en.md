@@ -88,7 +88,7 @@ Connect a large language model with your own API key to ask about the story and 
 ### Story helpers
 
 - **Pick dice results**: click a line on the dice wheel to choose that result.
-- **Option results**: dialogue options and dice lines show what they will change; locked options show their real unlock conditions, and **Unlock** next to them sets the conditions. **Option results** in settings shows these always, only on hover (no spoilers unless you look), or never.
+- **Option results**: dialogue options and dice lines show what they will change; locked options show their real unlock conditions, and **Unlock** next to them sets the conditions. With **Force options whose conditions aren't met** on (only the **All on** preset turns it on), options that are hidden when their conditions aren't met are listed too, marked **Conditions not met** in red with the conditions on hover; locked options whose conditions can't be set get **Force unlock**, which unlocks them without changing flags. **Option results** in settings shows these always, only on hover (no spoilers unless you look), or never.
 
   <img src="media/option-hint.webp" width="640" alt="Options followed by their results and unlock conditions">
 
