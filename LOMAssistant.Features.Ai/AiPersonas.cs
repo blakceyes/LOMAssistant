@@ -33,6 +33,8 @@ public sealed class AiPersona
 	public string Traits = "";
 	/// <summary>她在剧情里叫赵活的几种叫法（会随剧情变，如结缘后改叫「赵郎」），取玩家读到的最近一次。</summary>
 	public string[] Calls = new string[0];
+	/// <summary>游戏的「已相识」说明不了她这一局见没见过赵活：瑞杏的剧情不弹人物介绍；唐门的人开局前就认识赵活，介绍弹出来只是玩家头一回见到。</summary>
+	public bool NoMetFlag;
 	/// <summary>能用的表情（立绘文件名），第一个是默认。</summary>
 	public string[] Moods = { "normal" };
 
@@ -50,7 +52,7 @@ public sealed class AiPersona
 	{
 		new AiPersona
 		{
-			Id = "sister1", Folder = "Sister", Lover = 0, Name = "唐默铃",
+			Id = "sister1", Folder = "Sister", Lover = 0, Name = "唐默铃", NoMetFlag = true,
 			Address = "叫赵活「师兄」，自称「我」。",
 			Traits = "唐门掌门唐中翎的女儿，赵活的小师妹，十五岁。话很少，句子短，常停顿（「……」），紧张时会结巴（「我、我……」）。"
 				+ "安静腼腆，表情变化很小，心里想什么就直说，偶尔冒出一句让人意外的话。和亲近的人很黏，会拍拍人的背安慰人（「拍拍」）。"
@@ -60,7 +62,7 @@ public sealed class AiPersona
 		},
 		new AiPersona
 		{
-			Id = "girl1", Folder = "Girl1_瑞杏", Lover = 1, Name = "瑞杏",
+			Id = "girl1", Folder = "Girl1_瑞杏", Lover = 1, Name = "瑞杏", NoMetFlag = true,
 			Address = "叫赵活「赵君」，自称「妾身」，偶尔自称「本宫」。",
 			Calls = new[] { "赵君", "赵郎" },
 			Traits = "只在梦里与赵活相见的杏花仙。说话典雅，像在下一盘很长的棋，爱用棋局、梦、时光作比，语带机锋，似笑非笑。"
@@ -141,7 +143,7 @@ public sealed class AiPersona
 		},
 		new AiPersona
 		{
-			Id = "brother1", Folder = "Brother1", Friend = RelationshipStatType.大師兄, Name = "唐布衣", Names = new[] { "大师兄" },
+			Id = "brother1", Folder = "Brother1", Friend = RelationshipStatType.大師兄, Name = "唐布衣", Names = new[] { "大师兄" }, NoMetFlag = true,
 			IconCrop = new[] { 0.295f, 0.023f, 0.32f },
 			Address = "叫赵活「师弟」，损他时叫「小贱人」「臭师弟」，自称「我」或「师兄」。",
 			Traits = "唐门掌门唐中翎的大弟子，赵活的大师兄，江湖人称「飞侠」，轻功和暗器都是当世一流，最拿手的是拿真铜钱当金钱镖。"
@@ -179,11 +181,19 @@ public sealed class AiPersona
 		return list;
 	}
 
-	/// <summary>玩家见过她没有（读过她的对白）。</summary>
+	/// <summary>玩家见过她没有（读过她的对白）。已读对白是所有存档共用的，别的周目读过也算，只管人设列表里有没有她。</summary>
 	public bool Met()
 	{
 		ReadStorySystem read = ReadStorySystem.Instance;
 		return read != null && StoryScripts.All.Any(s => s.Talk.Any(t => t.Speaker == Id && read.ExistKey(t.Key)));
+	}
+
+	/// <summary>这一局见过她没有：剧情里初次见面弹人物介绍时，游戏把她记成已相识（跟着存档走）。记不到的返回 null。</summary>
+	public bool? MetHere()
+	{
+		RelationshipStatType? relation = Heroine?.Relation ?? Friend;
+		RelationshipStat stat = NoMetFlag || relation == null ? null : PlayerStatManagerData.Instance?.Relationships?.Get(relation.Value);
+		return stat?.Active;
 	}
 
 	/// <summary>结缘了没有：最后一面结缘旗标（「攻略某人」）做到了才算。心上人（愛人数值）只是游戏记的倾心对象，不等于结缘。</summary>
@@ -292,7 +302,7 @@ public sealed class AiPersona
 		return order;
 	}
 
-	/// <summary>她读过的对白里，按剧情先后最近一次用到的叫法（Calls 里的）；一次都没有返回空。</summary>
+	/// <summary>她这一局的对白里（剧本出现在这一局的剧情记录里），按剧情先后最近一次用到的叫法（Calls 里的）；一次都没有返回空。</summary>
 	private string LatestCall(List<(string Script, string Key)> lines)
 	{
 		if (Calls.Length == 0 || lines.Count == 0)
@@ -300,7 +310,8 @@ public sealed class AiPersona
 			return "";
 		}
 		var order = ScriptOrder();
-		var sorted = lines.Select((l, i) => (l.Key, Rank: order.TryGetValue(l.Script, out int r) ? r : -1, i)).OrderBy(x => x.Rank).ThenBy(x => x.i).ToList();
+		// 已读对白是所有存档共用的，别的周目、更后面的进度读过的不算
+		var sorted = lines.Where(l => order.ContainsKey(l.Script)).Select((l, i) => (l.Key, Rank: order[l.Script], i)).OrderBy(x => x.Rank).ThenBy(x => x.i).ToList();
 		var longest = Calls.OrderByDescending(c => c.Length).ToArray();
 		for (int i = sorted.Count - 1; i >= 0; i--)
 		{
@@ -314,14 +325,18 @@ public sealed class AiPersona
 		return "";
 	}
 
-	/// <summary>她在场或被提到的剧情记录，按这一局读到的先后；太多时留最早 10 条和最近的。</summary>
-	private List<string> Experiences(List<(string Script, string Key)> lines)
+	/// <summary>
+	/// 这一局剧情记录里和她有关的条目，按读到的先后：她在场的（记下它的剧本里有她的对白）和只提到她的分开，
+	/// 免得 AI 把听说的事当成和赵活一起经历的。太多时留最早 10 条和最近的。
+	/// </summary>
+	private (List<string> With, List<string> Heard) Experiences(List<(string Script, string Key)> lines)
 	{
-		var result = new List<string>();
+		var with = new List<string>();
+		var heard = new List<string>();
 		List<string> keys = PlayerStatManagerData.Instance?.StoryKeyList;
 		if (keys == null)
 		{
-			return result;
+			return (with, heard);
 		}
 		var present = new HashSet<string>(lines.Select(l => l.Script));
 		var names = new List<string> { Name };
@@ -332,25 +347,31 @@ public sealed class AiPersona
 			names.AddRange(AiKnowledge.Aliases[Lover].Where(a => a != "咖啡" && a != "上官"));
 		}
 		var map = RecordScripts();
+		var seen = new HashSet<string>();
 		foreach (string key in keys)
 		{
 			string legend = StoryScripts.Legend(key);
-			if (legend.Length == 0 || result.Contains(legend))
+			if (legend.Length == 0 || !seen.Add(legend))
 			{
 				continue;
 			}
-			bool there = map.TryGetValue(key, out var scripts) && scripts.Any(present.Contains);
-			if (there || names.Any(legend.Contains))
+			string text = legend.Length > 160 ? legend.Substring(0, 160) + "…" : legend;
+			if (map.TryGetValue(key, out var scripts) && scripts.Any(present.Contains))
 			{
-				result.Add(legend.Length > 160 ? legend.Substring(0, 160) + "…" : legend);
+				with.Add(text);
+			}
+			else if (names.Any(legend.Contains))
+			{
+				heard.Add(text);
 			}
 		}
-		if (result.Count > MaxExperiences)
-		{
-			result = result.Take(10).Concat(result.Skip(result.Count - (MaxExperiences - 10))).ToList();
-		}
-		return result;
+		return (Trim(with, MaxExperiences), Trim(heard, MaxHeard));
 	}
+
+	private const int MaxHeard = 30;
+
+	private static List<string> Trim(List<string> list, int max) =>
+		list.Count > max ? list.Take(10).Concat(list.Skip(list.Count - (max - 10))).ToList() : list;
 
 	/// <summary>
 	/// 会变的现状：好感、心上人和结缘、日期、地点、屏幕上的选项。接在玩家这次的问题前面发，不放进系统提示词，
@@ -370,6 +391,10 @@ public sealed class AiPersona
 			int value = PlayerStatManagerData.Instance?.Relationships?.Get(Friend.Value)?.Value ?? 0;
 			sb.Append("你对赵活的好感是 ").Append(value).Append("（游戏里的数值，大约 0 到 100；不要把数字说出口，只让它影响你的态度）。");
 			sb.Append(AiPersona.RelationText(null)).Append('\n');
+		}
+		if (MetHere() == false)
+		{
+			sb.Append("你和赵活还没见过面，彼此不认识：你们之间没有往事可提，他来找你说话，就当是初次打交道。\n");
 		}
 		GameTime time = PlayerStatManagerData.Instance?.GameTime;
 		if (!ReferenceEquals(time, null))
@@ -410,7 +435,7 @@ public sealed class AiPersona
 		{
 			sb.Append(L("照你们走到现在的剧情，你最近一次叫他「" + call + "」，没有特别的缘由就这样叫他。",
 				"In the story so far you last called him 「" + call + "」; keep calling him that (in English) unless there is a reason not to.",
-				"읽은 대사에서 찾은 호칭 예시는 「" + call + "」입니다. 현재 관계에 맞을 때만 한국어로 사용하고, 이 예시만으로 이번 회차에서 이미 만났거나 그 호칭을 썼다고 단정하지 마세요.",
+				"이번 회차의 스토리에서 당신은 그를 마지막으로 「" + call + "」라고 불렀습니다. 특별한 이유가 없으면 (한국어로) 그렇게 부르세요.",
 				"これまでのストーリーで、あなたが最後に彼を呼んだのは「" + call + "」です。特に理由がなければ（日本語で）そう呼んでください。",
 			"照你們走到現在的劇情，你最近一次叫他「" + call + "」，沒有特別的緣由就這樣叫他。")).Append('\n');
 		}
@@ -449,21 +474,34 @@ public sealed class AiPersona
 			}
 		}
 
-		// 经历：这一局游戏「剧情记录」里的条目（游戏按读到的先后记），取她在场（那段剧本里有她读过的对白）或提到她的。
+		// 经历：这一局游戏「剧情记录」里的条目（游戏按读到的先后记），她在场的（那段剧本里有她的对白）和只提到她的分两段给。
 		// 读到了才有，所以揭开过的身世一定在里面，没读到的后续一概没有
-		var story = Experiences(lines);
-		if (fast && story.Count > 20)
+		var (story, heard) = Experiences(lines);
+		if (fast)
 		{
-			story = story.Skip(story.Count - 20).ToList();
+			story = story.Skip(Math.Max(0, story.Count - 20)).ToList();
+			heard = heard.Skip(Math.Max(0, heard.Count - 8)).ToList();
 		}
 		if (story.Count > 0)
 		{
 			sb.Append('\n').Append(L("【你和赵活一起经历过的事】（游戏的剧情记录，按发生先后，越往下越近；文中的「你」指赵活。这些都是真的，被问起要答得上来；你只知道这些，之后的事一概不知，不要预言）",
 				"[What you and Zhao Huo have been through] (the game's story log, oldest first; 「你」 in it means Zhao Huo. All of it is true and you should be able to answer about it; it is all you know, you know nothing of what comes after, do not predict it)",
-				"[현재 회차의 관련 스토리 기록] (게임에서 제공된 공식 한국어 기록으로, 오래된 것부터 적혀 있습니다. 기록에서 주인공을 가리키는 「당신」이나 「你」는 조활입니다. 당신이 간접적으로 언급된 기록도 포함될 수 있습니다. 직접 참여한 사실이 명시된 경우에만 당신의 경험으로 말하고, 단순 언급을 조활과의 만남이나 공동 경험으로 단정하지 마세요. 이후의 일은 예언하지 마세요)",
+				"[당신과 조활이 함께 겪은 일] (이번 회차의 스토리 기록 중 당신이 그 자리에 있었던 일로, 오래된 것부터 적혀 있습니다. 기록에서 주인공을 가리키는 「당신」이나 「你」는 조활입니다. 모두 사실이니 물으면 답할 수 있어야 합니다. 당신이 아는 건 이것뿐이고 그 뒤의 일은 전혀 모르니 예언하지 마세요)",
 				"【あなたと趙活が一緒に経験したこと】（ゲームのストーリー記録で、古い順に並んでいます。文中の「你」は趙活のことです。すべて本当のことなので、聞かれたら答えられるように。あなたが知っているのはこれだけで、この先のことは一切知りません。予言はしないでください）",
 			"【你和趙活一起經歷過的事】（遊戲的劇情記錄，按發生先後，越往下越近；文中的「你」指趙活。這些都是真的，被問起要答得上來；你只知道這些，之後的事一概不知，不要預言）")).Append('\n');
 			foreach (string t in story)
+			{
+				sb.Append("- ").Append(t).Append('\n');
+			}
+		}
+		if (heard.Count > 0)
+		{
+			sb.Append('\n').Append(L("【你听说过的事】（剧情记录里提到你、但你不一定在场的事，按发生先后；文中的「你」指赵活。你可以知道、可以聊，但不要说成是你和赵活一起经历的）",
+				"[Things you have heard about] (story log entries that mention you but that you were not necessarily there for, oldest first; 「你」 in them means Zhao Huo. You may know and talk about them, but do not describe them as things you and Zhao Huo went through together)",
+				"[당신이 전해 들은 일] (스토리 기록 중 당신이 언급되지만 당신이 그 자리에 있었다고는 할 수 없는 일로, 오래된 것부터 적혀 있습니다. 기록 속의 「당신」이나 「你」는 조활입니다. 알고 이야기해도 되지만 당신과 조활이 함께 겪은 일처럼 말하지 마세요)",
+				"【あなたが聞き知っていること】（ストーリー記録のうち、あなたの名前は出てくるものの、あなたがその場にいたとは限らない出来事で、古い順に並んでいます。文中の「你」は趙活のことです。知っていて話してもかまいませんが、あなたと趙活が一緒に経験したことのように語らないでください）",
+			"【你聽說過的事】（劇情記錄裡提到你、但你不一定在場的事，按發生先後；文中的「你」指趙活。你可以知道、可以聊，但不要說成是你和趙活一起經歷的）")).Append('\n');
+			foreach (string t in heard)
 			{
 				sb.Append("- ").Append(t).Append('\n');
 			}
@@ -494,9 +532,14 @@ public sealed class AiPersona
 			"簡短：一般 1 到 3 段，每段一兩句，像當面說話。動作和神態可以寫，用全形括號包起來單獨成段，例如「（低頭撥弄衣角）」。")).Append('\n');
 		sb.Append("- ").Append(L("你只知道上面写的经历，不知道以后的事。赵活问到你不知道的事，就照你的性子含糊过去，不要编造重大经历。",
 			"You only know the experiences written above, not what comes later. If Zhao Huo asks about something you do not know, brush it off in your own way; do not invent major events.",
-			"제공된 자료에서 확인되는 현재 관계와 직접 경험에 맞춰 답하세요. 인물 설정, 호감도, 참고 대사만으로 만남이나 공동 경험을 지어내지 마세요. 이전 AI 대화는 다른 회차나 저장에서 이어졌을 수 있고, 당신의 과거 답변도 사실의 근거가 아닙니다. 현재 자료와 충돌하면 현재 자료를 따르세요. 확인되지 않으면 이미 만났다고도 처음 만난다고도 단정하지 말고, 당신의 말투를 유지하며 모른다고 하거나 자연스럽게 확인하세요. 앞으로의 일을 아는 것처럼 말하지 마세요.",
+			"제공된 자료에서 확인되는 현재 관계와 직접 경험에 맞춰 답하세요. 인물 설정, 호감도, 참고 대사만으로 만남이나 공동 경험을 지어내지 마세요. 확인되지 않으면 이미 만났다고도 처음 만난다고도 단정하지 말고, 당신의 말투를 유지하며 모른다고 하거나 자연스럽게 확인하세요. 앞으로의 일을 아는 것처럼 말하지 마세요.",
 			"あなたが知っているのは上に書かれた経験だけで、この先のことは知りません。知らないことを聞かれたら、あなたらしくはぐらかし、大きな出来事を作り上げないでください。",
 			"你只知道上面寫的經歷，不知道以後的事。趙活問到你不知道的事，就照你的性子含糊帶過，不要編造重大經歷。")).Append('\n');
+		sb.Append("- ").Append(L("前面的对话可能是在别的存档、别的进度里聊的，你之前说过的话也不作数：你们见没见过、关系怎样、经历过什么、现在是什么时候，一律以【此刻】和上面的资料为准。这些是幕后的说明，别在话里提存档、进度。",
+			"Earlier messages in this conversation may come from another save or another point in the story, and what you said before is not evidence: whether you have met, how close you are, what you have been through and what the date is all follow 【此刻】 and the material above. This is behind-the-scenes information: never mention saves or story progress when you speak.",
+			"앞선 대화는 다른 저장이나 다른 진행 시점에서 나눈 것일 수 있고, 당신이 전에 한 말도 근거가 되지 않습니다. 만난 적이 있는지, 어떤 사이인지, 무엇을 함께 겪었는지, 지금이 언제인지는 모두 【此刻】와 위의 자료를 따르세요. 이는 무대 뒤의 설명이니 말할 때 저장이나 진행 시점을 언급하지 마세요.",
+			"前のやり取りは別のセーブや別の進行時点のものかもしれず、あなたが以前言ったことも根拠になりません。会ったことがあるか、どんな間柄か、何を経験したか、今がいつかは、すべて【此刻】と上の資料に従ってください。これは舞台裏の説明なので、セーブや進行状況のことは口にしないでください。",
+			"前面的對話可能是在別的存檔、別的進度裡聊的，你之前說過的話也不作數：你們見沒見過、關係怎樣、經歷過什麼、現在是什麼時候，一律以【此刻】和上面的資料為準。這些是幕後的說明，別在話裡提存檔、進度。")).Append('\n');
 		string asks = heroine
 			? L("怎么讨你欢心、怎么和你在一起、", "how to win your heart or be with you, ", "어떻게 하면 당신의 마음을 얻고 함께할 수 있는지, ", "どうすればあなたの心をつかめるか、一緒になれるか、",
 			"怎麼討你歡心、怎麼和你在一起、")
