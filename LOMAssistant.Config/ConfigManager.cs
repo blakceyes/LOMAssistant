@@ -63,6 +63,8 @@ public static class ConfigManager
 
 	public static ConfigElement<bool> BranchChangeValues;
 
+	public static ConfigElement<bool> BranchPickerSeen;
+
 	public static ConfigElement<bool> ForceUnmetOptions;
 	public static ConfigElement<bool> EnableMapHints;
 	public static ConfigElement<bool> ShowItemUses;
@@ -394,7 +396,7 @@ public static class ConfigManager
 	{
 		EnableOptionInfo = new ConfigElement<bool>("EnableOptionInfo", "是否启用选项提示（选项结果、解锁条件）、地点事件提示和回想里的判定记录。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableManualDiceSelection = new ConfigElement<bool>("EnableManualDiceSelection", "是否启用骰子手动选择（点击线路直接选中）。true=开，false=关，改后重启生效", defaultValue: true);
-		EnableLibraryDisplay = new ConfigElement<int>("EnableLibraryDisplay", "讲经堂解锁显示：0=关，1=鼠标停在汗青书、生死簿各项上显示达成条件，2=全部显示为已解锁（也显示条件）。改后重启生效", 2);
+		EnableLibraryDisplay = new ConfigElement<int>("EnableLibraryDisplay", "讲经堂解锁显示：0=关，1=鼠标停在汗青书、生死簿各项上显示达成条件，2=全部显示为已解锁（也显示条件）。改后重启生效", 1);
 		EnableCombatAssist = new ConfigElement<bool>("EnableCombatAssist", "是否启用战斗辅助（ESC界面增加直接获胜按钮）。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableSkipAction = new ConfigElement<bool>("EnableSkipAction", "是否启用空过（养成界面 ESC 菜单增加“空过”按钮，消耗 1 次行动、不触发任何事件）。true=开，false=关，改后重启生效", defaultValue: true);
 		EnableBattleWin = new ConfigElement<bool>("EnableBattleWin", "是否启用团战直接获胜（团战暂停界面增加“直接获胜”按钮）。true=开，false=关，改后重启生效", defaultValue: true);
@@ -419,6 +421,7 @@ public static class ConfigManager
 		EnableEventPicker = new ConfigElement<bool>("EnableEventPicker", "随机事件自选：剧情走到随机事件（工作、闲逛等）时先停下，列出满足条件的事件选一个，也可以选随机。true=开，false=关", defaultValue: false);
 		ForceUnmetEvents = new ConfigElement<bool>("ForceUnmetEvents", "随机事件自选里也列出出现条件没满足的事件，点了无视条件直接触发（不改旗标，之后的剧情可能对不上）。true=开，false=关", defaultValue: false);
 		EnableBranchPicker = new ConfigElement<bool>("EnableBranchPicker", "判断前选走哪一支：剧情走到按条件分支的判断时，换一支能看到没读过的对白或接到别的剧情就先停下，列出每一支的条件、现在的值、对白看过没，选哪支就走哪支（先改数值，改不动直接走）。true=开，false=关", defaultValue: false);
+		BranchPickerSeen = new ConfigElement<bool>("BranchPickerSeen", "判断前选走哪一支：另一支的对白都看过了也停（只要换一支有对白或接到别的剧情）。关掉时只在有没读过的对白或接到别的剧情时停。true=开，false=关", defaultValue: false);
 		BranchChangeValues = new ConfigElement<bool>("BranchChangeValues", "选分支时把数值改到符合：判断前选走哪一支、剧情跳转按选的分支走时，先把属性、好感、旗标改到正好走这一支（改了会一直留着），改不动的再直接走。关掉时不改数值，只是这一次直接走过去。true=开，false=关", defaultValue: false);
 		ForceUnmetOptions = new ConfigElement<bool>("ForceUnmetOptions", "条件不满足就不出现的选项也列出来（红字标「条件没满足」，悬停看条件），点了直接选；锁住的选项条件改不到时给「强行解锁」（都不改旗标，之后的剧情可能对不上）。true=开，false=关", defaultValue: false);
 		EnableDuelActionForecast = new ConfigElement<bool>("EnableDuelActionForecast", "决斗中显示敌方本回合预选的行动；敌方意图较高时可能根据你的出招临场应变。默认关。true=开，false=关", defaultValue: false);

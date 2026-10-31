@@ -580,7 +580,8 @@ public partial class StoryReviewPanel : MonoBehaviour
 		return value.Trim();
 	}
 
-	// 内部数据是简体：输入繁体时转成简体再搜一遍；界面是繁体、韩语、日语时，再按界面上显示的字样（翻译后）搜一遍
+	// 内部数据是简体：输入繁体时转成简体再搜一遍；界面是繁体、韩语、日语时，再按界面上显示的字样（翻译后）搜一遍；
+	// 再按模糊找法搜一遍：中文拼音首字母、韩语初声、英语单词首字母（见 FuzzySearch）
 	private static bool Matches(string query, params string[] texts)
 	{
 		if (query.Length == 0)
@@ -598,7 +599,9 @@ public partial class StoryReviewPanel : MonoBehaviour
 			string plain = RichText.Strip(t);
 			return plain.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
 				|| (simplified != query && plain.IndexOf(simplified, StringComparison.OrdinalIgnoreCase) >= 0)
-				|| (translated && RichText.Strip(TextConverter.ForDisplay(t)).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
+				|| (translated && RichText.Strip(TextConverter.ForDisplay(t)).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+				|| FuzzySearch.Matches(plain, query)
+				|| (translated && FuzzySearch.Matches(RichText.Strip(TextConverter.ForDisplay(t)), query));
 		});
 	}
 

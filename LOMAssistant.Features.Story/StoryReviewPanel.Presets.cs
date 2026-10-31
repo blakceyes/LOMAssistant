@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using LOMAssistant.Config;
 using UnityEngine;
@@ -6,7 +6,7 @@ using UnityEngine;
 namespace LOMAssistant.Features.Story;
 
 /// <summary>
-/// 设置页最上面的「预设」：原汁原味、辅助、全开三档，一次改好剧情提示、养成战斗辅助和作弊类开关。
+/// 设置页最上面的「预设」：原汁原味、辅助、进阶、全开四档，一次改好剧情提示、养成战斗辅助和作弊类开关。
 /// 只动这些开关；存档、提速、界面、热键等设置不变。当前设置正好是哪一档就高亮哪一档，都不是就高亮「自定义」。
 /// 从自定义换到别的预设时，先把这些开关记进配置 PresetCustom，点「自定义」能换回来。
 /// 点一下按钮变成「确定？」，几秒内再点一次才换，免得误点把自己调好的设置冲掉。
@@ -93,9 +93,38 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableCombatAssist, true),
 				(ConfigManager.EnableBattleWin, true),
 				(ConfigManager.EnableDuelActionForecast, false),
-				(ConfigManager.EnableLibraryDisplay, 2),
+				(ConfigManager.EnableLibraryDisplay, 1),
 				(ConfigManager.EnableShopAllItems, false),
 				(ConfigManager.EnableStoryJump, false),
+			}.Concat(Cheats(true, false)).ToArray(),
+		},
+		// 作者自己玩的设置：比「全开」少了判断前选走哪一支、强行触发条件没满足的事件和选项，以及会让战斗、商店失去意义的作弊
+		new Preset
+		{
+			Name = "进阶",
+			Tagline = "作者自己玩用的设置",
+			Note = "打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开判断前选走哪一支和强行触发条件没满足的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品",
+			Values = new (IConfigElement, object)[]
+			{
+				(ConfigManager.ShowBranchChecks, true),
+				(ConfigManager.ShowFlagChanges, true),
+				(ConfigManager.EnableEventPicker, true),
+				(ConfigManager.ForceUnmetEvents, false),
+				(ConfigManager.ForceUnmetOptions, false),
+				(ConfigManager.EnableBranchPicker, false),
+				(ConfigManager.EnableOneClickUnlock, true),
+				(ConfigManager.EnableOptionInfo, true),
+				(ConfigManager.ShowItemUses, true),
+				(ConfigManager.OptionResultMode, 0),
+				(ConfigManager.EnableManualDiceSelection, true),
+				(ConfigManager.EnableMapHints, true),
+				(ConfigManager.EnableSkipAction, true),
+				(ConfigManager.EnableCombatAssist, true),
+				(ConfigManager.EnableBattleWin, true),
+				(ConfigManager.EnableDuelActionForecast, true),
+				(ConfigManager.EnableLibraryDisplay, 1),
+				(ConfigManager.EnableShopAllItems, false),
+				(ConfigManager.EnableStoryJump, true),
 			}.Concat(Cheats(true, false)).ToArray(),
 		},
 		new Preset
@@ -225,7 +254,7 @@ public partial class StoryReviewPanel
 	}
 
 	/// <summary>
-	/// 新玩家第一次打开咖啡伴侣窗口时，在窗口中间弹出三档预设让玩家选；选了或点「以后再说」都不再弹。
+	/// 新玩家第一次打开咖啡伴侣窗口时，在窗口中间弹出几档预设让玩家选；选了或点「以后再说」都不再弹。
 	/// 从 2.x 更新上来的老玩家不弹（ConfigManager.Init 里直接记成弹过）。
 	/// </summary>
 	private void DrawPresetChooser()
@@ -234,7 +263,8 @@ public partial class StoryReviewPanel
 		{
 			Fill(new Rect(0, 0, _windowRect.width, _windowRect.height), new Color(0.1f, 0.08f, 0.05f, 0.35f));
 		}
-		float card = S(300), gap = S(20), pad = S(28);
+		// 四档时卡片窄一些，整排放得进窗口
+		float card = S(Presets.Length > 3 ? 250 : 300), gap = S(Presets.Length > 3 ? 16 : 20), pad = S(28);
 		float width = card * Presets.Length + gap * (Presets.Length - 1) + pad * 2, height = S(500);
 		var box = new Rect((_windowRect.width - width) / 2, (_windowRect.height - height) / 2, width, height);
 		if (Event.current.type == EventType.Repaint)

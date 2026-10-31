@@ -114,11 +114,15 @@ internal static class BranchPicker
 	private static string DestinationKey(StoryExit exit) =>
 		exit.ToTitle ? "title" : exit.ToMap ? "map" : exit.Target.Length > 0 ? "script:" + exit.Target : "";
 
-	/// <summary>值得停下来问：换一支能看到没读过的对白，或者接到和现在会走的那支不一样的地方。</summary>
+	/// <summary>
+	/// 值得停下来问：换一支能看到没读过的对白，或者接到和现在会走的那支不一样的地方。
+	/// 设置里打开「看过的分支也停」时，换一支有对白就停，看没看过都算。
+	/// </summary>
 	public static bool Worth(List<Arm> arms, int predicted)
 	{
 		Arm now = arms.Find(a => a.Branch == predicted);
-		return arms.Any(a => a != now && (a.Unread > 0 || (now != null && a.Destinations.Count > 0 && !a.Destinations.SetEquals(now.Destinations))));
+		bool seen = ConfigManager.BranchPickerSeen.Value;
+		return arms.Any(a => a != now && (a.Unread > 0 || (seen && a.Lines > 0) || (now != null && a.Destinations.Count > 0 && !a.Destinations.SetEquals(now.Destinations))));
 	}
 
 	/// <summary>这一支的对白看过没。</summary>

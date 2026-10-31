@@ -608,7 +608,7 @@ public static class StoryAtlas
 		FileLogger.Log($"[剧情回顾] 台词索引：{Dialogue.Count} 句");
 	}
 
-	/// <summary>按台词搜：返回（剧本、包含这段话的片段），最多 max 条。</summary>
+	/// <summary>按台词搜：返回（剧本、包含这段话的片段），最多 max 条。搜索词全是英文字母时也按拼音首字母找。</summary>
 	public static List<(string Script, string Snippet)> SearchDialogue(string query, int max)
 	{
 		var found = new List<(string, string)>();
@@ -621,6 +621,10 @@ public static class StoryAtlas
 		foreach (var (script, text) in Dialogue)
 		{
 			int at = text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+			if (at < 0)
+			{
+				at = Pinyin.Find(text, query, cache: false);
+			}
 			if (at < 0)
 			{
 				continue;

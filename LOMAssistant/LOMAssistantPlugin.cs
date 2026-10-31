@@ -188,6 +188,7 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(SwitchRandom));
 			TryPatchAll(typeof(OneClickUnlockPatch));
 			TryPatchAll(typeof(HiddenOptions));
+			TryPatchAll(typeof(LOMAssistant.Features.Extras.GameSpeedSayPatch));
 			TryPatchAll(typeof(BranchOverride));
 			EventPicker.Ensure(base.gameObject);
 			UiHider.Ensure(base.gameObject);

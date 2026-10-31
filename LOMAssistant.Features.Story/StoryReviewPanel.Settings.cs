@@ -98,6 +98,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.EnableEventPicker, "随机事件自选"),
 				Row(ConfigManager.ForceUnmetEvents, "强行触发条件没满足的事件"),
 				Row(ConfigManager.EnableBranchPicker, "判断前选走哪一支"),
+				Row(ConfigManager.BranchPickerSeen, "看过的分支也停"),
 				Row(ConfigManager.BranchChangeValues, "选分支时把数值改到符合"),
 				Row(ConfigManager.EnableOneClickUnlock, "锁住的选项一键设置"),
 				Row(ConfigManager.ForceUnmetOptions, "强行选条件没满足的选项"),

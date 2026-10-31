@@ -63,7 +63,7 @@ Connect a large language model with your own API key to ask about the story and 
 
   <img src="media/story-now.webp" width="640" alt="Now: this scene's options grouped by choice, stat gains in green and losses in red; current quests">
 
-- **Route map**: the whole main story laid out as one line along the calendar; branches split off above and below and come back to it where they rejoin, with the trigger condition on each split; side quests below; ticks mark what this playthrough has done. Click a stop for when, where and under which conditions it triggers. Search by quest, place, dialogue or flag (a flag result lists the scenes that change or check it).
+- **Route map**: the whole main story laid out as one line along the calendar; branches split off above and below and come back to it where they rejoin, with the trigger condition on each split; side quests below; ticks mark what this playthrough has done. Click a stop for when, where and under which conditions it triggers. Search by quest, place, dialogue or flag (a flag result lists the scenes that change or check it); typing the first letters of the words, or Chinese pinyin initials, works too.
 
   <img src="media/story-route.webp" width="640" alt="Route map: the main story as stops on a calendar, side quests below">
 
@@ -96,7 +96,7 @@ Connect a large language model with your own API key to ask about the story and 
 
   <img src="media/event-picker.webp" width="480" alt="Pick random events: the events that can trigger, their odds and changes">
 
-- **Pick the branch before a check** (off by default; only the **All on** preset turns it on): at a story check that branches on conditions, the game stops first when another branch has unread lines or leads to a different scene. It lists each branch's conditions, current values and whether its lines were seen, and takes the branch you pick: by default values are left alone and only this one check goes that way; with **Change values to fit the chosen branch** on (off by default), stats, affection and flags are first changed just enough for that branch (the changes stay), and the branch is taken directly when they can't be. Checks with only one possible branch, or where other branches add nothing new, don't stop. Fast-forward is stopped when it pops up.
+- **Pick the branch before a check** (off by default; only the **All on** preset turns it on): at a story check that branches on conditions, the game stops first when another branch has unread lines or leads to a different scene. It lists each branch's conditions, current values and whether its lines were seen, and takes the branch you pick: by default values are left alone and only this one check goes that way; with **Change values to fit the chosen branch** on (off by default), stats, affection and flags are first changed just enough for that branch (the changes stay), and the branch is taken directly when they can't be. Checks with only one possible branch, or where other branches add nothing new, don't stop; with **Stop for seen branches too** on (off by default), it also stops when another branch has lines you've already seen. Fast-forward is stopped when it pops up.
 
 - **Map event hints**: hover over a building on the training map to see its main and side quests (can they trigger, conditions) and the odds of its random events; buildings with a quest you can trigger now stay lit. Turn on "Map hints: triggerable only" in settings to list only the quests that would trigger now; the rest are only counted. Inside a building, hover over an option such as chopping wood or training to see the random events it can roll, their odds and which you have not seen; the same goes for moving and peddling in the Go out list.
 - **Item uses** (off by default, may reveal quest names): item descriptions in the bag and shops end with what using the item does and which stories check for it or take it. Setting: "Show item uses".
@@ -126,7 +126,7 @@ Connect a large language model with your own API key to ask about the story and 
 
 Switches in the training and combat groups of the settings page (F8):
 
-- Game speed 1x / 2x / 3x / 5x
+- Game speed 1x / 2x / 3x / 5x (team battles and lines that advance by themselves stay at normal speed)
 - Action points: normal / not consumed / N per period
   > ⚠️ The last two can make some story events not trigger or trigger early, and may block key main quests. Use with care and keep saves.
 - Break the 100 stat cap; training, forging and alchemy use up no attempts or points, and forging and alchemy cost no silver
@@ -144,7 +144,7 @@ Also:
 
 ### Stats page (F9)
 
-Stats, martial arts, sects, relationships (everyone), talents, training and crafting points, facilities, books, items and flags on one page; add, subtract or set any value, and search by name, ID or description.
+Stats, martial arts, sects, relationships (everyone), talents, training and crafting points, facilities, books, items and flags on one page; add, subtract or set any value, and search by name, ID, description, the first letters of the words or Chinese pinyin initials.
 
 - **Books and items**: set the count directly; quests advance as if bought in a shop. Hover over a martial manual to see what each layer adds when learned; learned layers are ticked.
 - **Stats** can be set below the bonus from manuals and the like, even below zero, and stay there through later story changes and loading.
@@ -189,7 +189,7 @@ Everything is on the settings page of the window (F8). Changes are saved immedia
 
 <img src="media/settings.webp" width="640" alt="Settings page: switches, numbers, game speed and hotkeys by group">
 
-**Presets**: at the top of the settings page you can switch in one click to **As intended**, **Assist** or **All on**. They only change story hints, life-sim and combat aids and cheats; saves, speed-ups, interface and hotkeys stay as they are. Changing any of those switches makes it **Custom**, which you can switch back to later. New players pick one the first time they open the window; if they don't, it stays on **Assist**.
+**Presets**: at the top of the settings page you can switch in one click to **As intended**, **Assist**, **Advanced** or **All on**. They only change story hints, life-sim and combat aids and cheats; saves, speed-ups, interface and hotkeys stay as they are. Changing any of those switches makes it **Custom**, which you can switch back to later. New players pick one the first time they open the window; if they don't, it stays on **Assist**.
 
 <img src="media/presets.webp" width="640" alt="Choosing a preset: three cards saying who each one suits and what it changes">
 
