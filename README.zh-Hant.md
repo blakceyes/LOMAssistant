@@ -221,5 +221,5 @@ DOTNET=/path/to/dotnet ./Installer/build-installer.sh
 - **存檔備註顯示**：移植自 [LOM_SaveSlotExpander](https://gitlab.com/ame-chan/lom_saveslotexpander)（ame-chan，MIT 許可）。
 - **AI 陪玩的思路**：參考 [江湖夜話](https://github.com/Cpjjason/jianghu-yehua)（Cpjjason）。它也是《活俠傳》的 AI Mod，能和遊戲裡的人物私下閒談，人物會送東西、指點武功、記得聊過的事（[B 站介紹影片](https://www.bilibili.com/video/BV1s2nC6pE83/)）。
 - **AI 陪玩的人設**：部分性格和小習慣參考了類腦社群夏呆呆的同人角色卡《活俠傳》。
-- 感謝 [lxsb222-spec](https://github.com/lxsb222-spec)（愛死）、[blakceyes](https://github.com/blakceyes)、[NEXTAltair](https://github.com/NEXTAltair)、[pluvivanto](https://github.com/pluvivanto) 提交的 PR，以及 [mahosalieri85-a11y](https://github.com/mahosalieri85-a11y)、[iampigcheng](https://github.com/iampigcheng) 提交的 issue。
+- 感謝 [lxsb222-spec](https://github.com/lxsb222-spec)（愛死）、[blakceyes](https://github.com/blakceyes)、[NEXTAltair](https://github.com/NEXTAltair)、[pluvivanto](https://github.com/pluvivanto)、[lockpick](https://github.com/lockpick) 提交的 PR，以及 [mahosalieri85-a11y](https://github.com/mahosalieri85-a11y)、[iampigcheng](https://github.com/iampigcheng) 提交的 issue。
 - 下載包附帶的 [BepInEx](https://github.com/BepInEx/BepInEx)、[UnityDoorstop](https://github.com/NeighTools/UnityDoorstop)、[Newtonsoft.Json](https://github.com/JamesNK/Newtonsoft.Json) 按各自的許可證分發。

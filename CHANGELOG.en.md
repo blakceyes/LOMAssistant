@@ -2,6 +2,14 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.2.5 (2026-10-30)
+
+- **AI Companion**: characters Zhao Huo hasn't met yet in the current playthrough no longer act as if they know him; how they address him only follows the story read in this playthrough; story scenes that only mention a character are no longer treated as things she went through with Zhao Huo; after switching saves, the current progress is what counts.
+- **Story Jump**: the romance option only becomes available once the time of her last romance scene is reached; characters without a romance scene in the game can't be selected.
+- **Korean UI**: completed the UI translation, corrected translations of story, condition and quest names, and fixed untranslated text in combined or shortened strings; also added some Japanese and English entries.
+- **Duel enemy action forecast**: the horizontal layout no longer shows Chinese in the Korean, Japanese and English UI.
+- **Installer**: added a "No online update check (install this zip's version)" option; when checked, the installer doesn't connect to GitHub.
+
 ## 3.2.4 (2026-10-30)
 
 - **Mod not loading when started from Steam**: after the game was started once without Steam, later starts from Steam could skip the mod. Fixed; for an existing install, run the installer once.
