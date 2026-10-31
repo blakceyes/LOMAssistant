@@ -74,7 +74,7 @@ public static class BranchNotifyPatch
 				note = note.Substring(0, newline);
 			}
 			note = TextConverter.ToSimplified(note.Trim());
-			string label = note.Length > 0 ? name + " " + note : name;
+			string label = note.Length > 0 ? name + "　" + note : name;
 			string result = __result <= items.Count ? (items.Count > 1 ? "走第 " + __result + " 个" : "满足") : "都不满足";
 
 			var entry = new Entry { Title = label + " · " + result, Taken = __result <= items.Count ? __result - 1 : -1 };

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using LOMAssistant.Features.Story;
 
 namespace LOMAssistant.Tests;
 
@@ -111,6 +112,20 @@ public static class Tests
 			new[] { "绝招", "절초" },
 			new[] { "银两", "은자" },
 			new[] { "心上人", "마음에 둔 사람" },
+			// 好感页的内部别名保留编号，韩语名称清楚区分各个条目。
+			new[] { "主角", "조활" },
+			new[] { "虞小梅_探险队长", "우소매_탐사대장" },
+			new[] { "鹤手", "우소매의 학 손모양" },
+			new[] { "叶云啾_1", "엽운추_1" },
+			new[] { "叶云啾_2", "엽운추_2" },
+			new[] { "好感 叶云啾_1", "호감도 엽운추_1" },
+			new[] { "<b>叶云啾_2</b>", "<b>엽운추_2</b>" },
+			new[] { "马富贵", "이부귀" },
+			new[] { "马富贵在唐门", "이부귀가 당문에 머무름" },
+			new[] { "认识马富贵", "이부귀와 구면" },
+			// 游戏消息窗口也复用已有的旗标名称和通知句式。
+			new[] { "【旗标】决斗泛用事件旗标1  1 → 0", "【플래그】결투 공통 이벤트 플래그1  1 → 0" },
+			new[] { "【旗标】UNKNOWN_FLAG  -2 → 12", "【플래그】UNKNOWN_FLAG  -2 → 12" },
 			new[] { "嘴力 需>=40 → 当前35", "구력 필요 >=40 → 현재 35" },
 			new[] { "<b>嘴力 需>=40 → 当前35</b>", "<b>구력 필요 >=40 → 현재 35</b>" },
 			new[] { "心上人 需=郁竹", "마음에 둔 사람 필요 =욱죽" },
@@ -295,6 +310,358 @@ public static class Tests
 			Assert(result.EndsWith("M12345") && result.Contains("看剧情图："), language + "：达到嵌套上限后应保留剩余文字");
 			Assert(LOMAssistant.UiText.Translate(deep, language) == result, language + "：缓存结果发生变化");
 		}
+	}
+
+	/// <summary>选中标记、条件提示和热键列表嵌套后仍按各自语言翻译，未知文字与分隔符保留。</summary>
+	public static void TestNestedUiLists()
+	{
+		string J(string text) => LOMAssistant.UiText.Translate(text, "Japanese");
+		Assert(J("崆峒·飞天殿（Section_01_01）") == "崆峒·" + J("飞天殿") + "（Section_01_01）", "相同日文句式也要翻译内部场所名并保留编号");
+		Assert(J("【注意】还没有随时存档") == "【注意】" + J("还没有随时存档"), "日文提示前缀不变时仍翻译内部句子");
+		foreach (string language in new[] { "Korean", "Japanese", "English" })
+		{
+			string T(string text) => LOMAssistant.UiText.Translate(text, language);
+			foreach (string marker in new[] { "○ ", "● " })
+			{
+				const string condition = "贡献度 >=10";
+				string source = marker + condition + "　（没读过 1 句）";
+				string expected = marker + T(condition) + "　" + T("（没读过 1 句）");
+				Assert(T(source) == expected, language + "：选中标记里的条件与未读提示应分别翻译");
+				Assert(T("<b>" + source + "</b>") == "<b>" + expected + "</b>", language + "：保留选项的富文本");
+				source = marker + "「DIALOGUE_01」　（要 " + condition + "）";
+				Assert(T(source) == marker + "「DIALOGUE_01」　" + T("（要 " + condition + "）"), language + "：条件前缀不能漏译");
+			}
+			const string list = "数值页、设置页、UNKNOWN_KEY";
+			string translated = T("数值页") + T("、") + T("设置页") + T("、") + "UNKNOWN_KEY";
+			Assert(T(list) == translated, language + "：列表逐项翻译并保留未知名称");
+			string notice = "检测到「Example Mod」的快捷键和本 Mod 撞了，本 Mod 的{0}热键已让给它（改成不绑定）。可以在设置页「热键」里另绑别的键。";
+			string template = string.Format(notice, "LIST_VALUE");
+			if (T(template) != template) // 没有整句译文的语言仍走原来的回退。
+			{
+				Assert(T(string.Format(notice, list)) == T(template).Replace("LIST_VALUE", translated), language + "：提示参数中的热键列表");
+			}
+			const string spaced = "FLAG_ID ≥ 1  〈VALUE…";
+			Assert(T("○ 「DIALOGUE_01」　（要 " + spaced + "）") == "○ 「DIALOGUE_01」　" + T("（要 " + spaced + "）"), language + "：条件内部空格不能拆开外层句式");
+			if (language != "English")
+			{
+				const string flag = "(解锁[崆峒探险队强袭六道峡]、[启程])";
+				string name = NameTable("UiFlagNames", language).Single(r => r[0] == flag)[1];
+				Assert(T("旗标TEST_ID〔" + flag + "〕 = 1").Contains(name), language + "：带顿号的完整旗标名优先于列表分段");
+			}
+		}
+		foreach (string language in new[] { "ChineseSimplified", "ChineseTraditional" })
+		{
+			const string source = "● 贡献度 >=10　（没读过 1 句）、数值页、设置页";
+			Assert(LOMAssistant.UiText.Translate(source, language) == source, language + "：保留中文原文");
+		}
+	}
+
+	/// <summary>地点触发提示的识别与译表一致，切换语言后仍能识别之前追加的提示。</summary>
+	public static void TestTriggerHintTranslations()
+	{
+		var hint = Mod.GetType("LOMAssistant.OptionInfoPatch").GetMethod("IsTriggerHint", BindingFlags.Static | BindingFlags.NonPublic);
+		var remove = Mod.GetType("LOMAssistant.OptionInfoPatch").GetMethod("RemoveTriggerHint", BindingFlags.Static | BindingFlags.NonPublic);
+		bool HasHint(string text) => (bool)hint.Invoke(null, new object[] { text });
+		string Remove(string text) => (string)remove.Invoke(null, new object[] { text });
+		foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
+		{
+			string text = LOMAssistant.UiText.Translate("可触发：MISSION_ID", language);
+			Assert(HasHint("DIALOGUE_KEY(" + text + ")"), language + "：应识别实际生成的触发提示");
+			foreach (string title in new[] { "MISSION_ID", "폐사당 (하)", "TITLE (part (2))" })
+			{
+				text = LOMAssistant.UiText.Translate("可触发：" + title, language);
+				const string original = "DIALOGUE_KEY(original note)";
+				Assert(Remove(original + "(" + text + ")") == original, language + "：任务名中的括号不能截断原对白或留下半条提示");
+			}
+		}
+		Assert(HasHint("DIALOGUE_KEY(可觸發：MISSION_ID)"), "保留繁体提示识别");
+		Assert(!HasHint("DIALOGUE_KEY") && !HasHint("DIALOGUE_KEY(MISSION_ID)"), "没有触发提示的对白不应被识别");
+		Assert(Remove("DIALOGUE_KEY(可觸發：TITLE (下))") == "DIALOGUE_KEY", "繁体提示中的括号");
+		Assert(Remove("DIALOGUE_KEY(note)") == "DIALOGUE_KEY(note)" && Remove(null) == null && Remove("") == "", "无提示时保留原文和空值");
+	}
+
+	/// <summary>选择窗口保留着时切换语言：只更新显示，去处、选中项和执行计划不变。</summary>
+	public static void TestChoiceDisplayLanguages()
+	{
+		const BindingFlags flags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		FieldInfo languageSetting = Mod.GetType("LOMAssistant.Config.ConfigManager").GetField("UiLanguage", flags);
+		object savedSetting = languageSetting.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(languageSetting.FieldType);
+		FieldInfo value = languageSetting.FieldType.GetField("m_value", flags);
+		Type choiceType = Mod.GetType("LOMAssistant.EventPicker").GetNestedType("Choice", flags);
+		PropertyInfo displayEffects = choiceType.GetProperty("DisplayEffects");
+		MethodInfo choose = typeof(StoryJump).GetMethod("ChooseNamed", flags);
+		MethodInfo refresh = typeof(StoryJump.Fork).GetMethod("RefreshOptions", flags);
+		string T(string text) => LOMAssistant.TextConverter.ForDisplay(text);
+		string Short(string text) => text.Length > 40 ? text.Substring(0, 40) + "…" : text;
+		const string condition = "旗标攻略人数_三个高手_排除龙湘 >=1";
+		const string effects = "<color=#A3302A>不满足</color>　" + condition;
+		string[] exits = { "接到「DIALOGUE；VALUE」", "回到标题（结局）" };
+		try
+		{
+			languageSetting.SetValue(null, setting);
+			foreach (int initial in Enumerable.Range(1, 5))
+			{
+				value.SetValue(setting, initial);
+				object choice = Activator.CreateInstance(choiceType, true);
+				choiceType.GetField("Effects").SetValue(choice, effects);
+				choiceType.GetField("Exits").SetValue(choice, exits);
+				choiceType.GetField("Key").SetValue(choice, "Switch:TEST#2");
+				choiceType.GetField("Forced").SetValue(choice, 2);
+				var mission = new StoryMission { Key = "MISSION_ID" };
+				var plan = new StoryJump.Plan { Mission = mission, Script = "SCRIPT_ID" };
+				plan.Choices["FORK_ID"] = 1;
+				plan.Arms["CHECK_ID"] = 2;
+				plan.Commands.Add(("METHOD_ID", new[] { "ARG_ID" }));
+				int formats = 0;
+				Func<List<string>> labels = () =>
+				{
+					formats++;
+					return new List<string> { "「OPTION_ID」　（要 " + Short(T(condition)) + "）", "按游戏判断" };
+				};
+				int picked = (int)choose.Invoke(null, new object[] { plan, mission, "FORK_ID", "SCRIPT_ID", labels(), 0, true, labels });
+				StoryJump.Fork fork = plan.Forks.Single();
+				var options = fork.Options;
+				foreach (int language in new[] { initial, 3, 5, 4, 2, 1, initial })
+				{
+					value.SetValue(setting, language);
+					string actual = (string)displayEffects.GetValue(choice);
+					string expected = effects + "\n" + string.Join("；", exits.Select(T));
+					Assert(actual == expected && T(actual) == T(expected), "分支去处应按当前语言逐项翻译");
+					Assert(actual.Contains("DIALOGUE；VALUE"), "去处文字内的分号不能拆开");
+					refresh.Invoke(fork, null);
+					Assert(fork.Options[0] == "「OPTION_ID」　（要 " + Short(T(condition)) + "）", "条件应重新翻译后截短，不能沿用旧语言");
+					int before = formats;
+					refresh.Invoke(fork, null);
+					Assert(formats == before, "同一语言不应重复生成选项");
+					Assert(ReferenceEquals(options, fork.Options) && fork.Options.Count == 2 && fork.Picked == picked && picked == 1 && fork.Key == "FORK_ID", "刷新显示不能替换选项容器或改变选中项");
+					Assert(plan.Choices["FORK_ID"] == 1 && plan.Arms["CHECK_ID"] == 2 && plan.Commands.Single().Method == "METHOD_ID" && plan.Commands[0].Args.Single() == "ARG_ID", "刷新显示不能重算或改动执行计划");
+					Assert((string)choiceType.GetField("Effects").GetValue(choice) == effects && exits.SequenceEqual((string[])choiceType.GetField("Exits").GetValue(choice)), "原始条件和去处应保留");
+					Assert((string)choiceType.GetField("Key").GetValue(choice) == "Switch:TEST#2" && (int)choiceType.GetField("Forced").GetValue(choice) == 2, "事件编号与分支编号不变");
+				}
+				choiceType.GetField("Exits").SetValue(choice, null);
+				Assert((string)displayEffects.GetValue(choice) == effects, "普通事件沿用原来的说明路径");
+				choiceType.GetField("Exits").SetValue(choice, new string[0]);
+				Assert((string)displayEffects.GetValue(choice) == effects, "没有去处时不增加空行");
+				choiceType.GetField("Exits").SetValue(choice, exits);
+				choiceType.GetField("Effects").SetValue(choice, "");
+				Assert((string)displayEffects.GetValue(choice) == string.Join("；", exits.Select(T)), "没有条件时不增加空行");
+				var plain = new StoryJump.Fork { Key = "PLAIN_ID", Picked = 1 };
+				plain.Options.AddRange(new[] { "RAW_1", "RAW_2" });
+				refresh.Invoke(plain, null);
+				Assert(plain.Options.SequenceEqual(new[] { "RAW_1", "RAW_2" }) && plain.Picked == 1, "没有格式化回调的选项维持原状");
+			}
+		}
+		finally
+		{
+			languageSetting.SetValue(null, savedSetting);
+		}
+	}
+
+	/// <summary>随机事件名随界面语言刷新，包括未满足的事件；编号、权重和规则不受影响。</summary>
+	public static void TestEventPickerLabelLanguages()
+	{
+		const BindingFlags flags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		Type config = Mod.GetType("LOMAssistant.Config.ConfigManager"), picker = Mod.GetType("LOMAssistant.EventPicker");
+		FieldInfo language = config.GetField("UiLanguage", flags), rules = config.GetField("EventRules", flags);
+		object savedLanguage = language.GetValue(null), savedRules = rules.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(language.FieldType);
+		object ruleSetting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(rules.FieldType);
+		FieldInfo value = language.FieldType.GetField("m_value", flags);
+		FieldInfo ruleValue = rules.FieldType.GetField("m_value", flags);
+		Type choiceType = picker.GetNestedType("Choice", flags);
+		FieldInfo dataField = choiceType.GetField("Data"), branch = picker.GetField("_branchMode", flags);
+		IList choices = (IList)picker.GetField("Choices", flags).GetValue(null);
+		object[] savedChoices = choices.Cast<object>().ToArray();
+		object savedBranch = branch.GetValue(null);
+		object data = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(dataField.FieldType);
+		FieldInfo note = dataField.FieldType.GetField("_devNote", flags);
+		// 非零标记只供 Unity 的 null 判断；下面只读托管备注，不调用原生对象方法。
+		FieldInfo native = typeof(UnityEngine.Object).GetField("m_CachedPtr", flags);
+		MethodInfo getName = Mod.GetType("LOMAssistant.DataHelper").GetMethod("GetEventName"), label = picker.GetMethod("Label", flags);
+		try
+		{
+			native.SetValue(data, new IntPtr(1));
+			language.SetValue(null, setting);
+			ruleValue.SetValue(ruleSetting, "");
+			rules.SetValue(null, ruleSetting);
+			branch.SetValue(null, false);
+			foreach (string raw in new[] { "P_大失敗_002", "和小梅跑步", "小梅", "UNKNOWN_EVENT" })
+			{
+				note.SetValue(data, raw);
+				foreach (int initial in Enumerable.Range(1, 5))
+				{
+					value.SetValue(setting, initial);
+					object choice = Activator.CreateInstance(choiceType, true);
+					string cached = LOMAssistant.TextConverter.ToSimplified((string)getName.Invoke(null, new object[] { data, true }));
+					dataField.SetValue(choice, data);
+					choiceType.GetField("Name").SetValue(choice, cached);
+					choiceType.GetField("Key").SetValue(choice, "EVENT_ID");
+					choiceType.GetField("Rate").SetValue(choice, 10);
+					choices.Clear();
+					choices.Add(choice);
+					foreach (int current in Enumerable.Range(1, 5))
+					{
+						value.SetValue(setting, current);
+						string name = (string)getName.Invoke(null, new object[] { data, true });
+						foreach (bool unmet in new[] { false, true })
+						{
+							choiceType.GetField("Unmet").SetValue(choice, unmet);
+							string actual = (string)label.Invoke(null, new object[] { 0, 10 });
+							string expected = unmet ? name + "　<color=#73644F>条件没满足</color>" : "1. " + name + "（100%）";
+							Assert(actual == expected, "事件名应按当前语言读取，不能沿用旧译名或把日语转成简体：" + raw);
+							Assert((string)choiceType.GetField("Name").GetValue(choice) == cached && (string)choiceType.GetField("Key").GetValue(choice) == "EVENT_ID" && (int)choiceType.GetField("Rate").GetValue(choice) == 10, "取显示名不能改动缓存、编号或权重");
+							Assert((string)ruleValue.GetValue(ruleSetting) == "", "显示不应写入事件规则");
+						}
+					}
+				}
+			}
+		}
+		finally
+		{
+			native.SetValue(data, IntPtr.Zero);
+			choices.Clear();
+			foreach (object choice in savedChoices) choices.Add(choice);
+			branch.SetValue(null, savedBranch);
+			language.SetValue(null, savedLanguage);
+			rules.SetValue(null, savedRules);
+		}
+	}
+
+	/// <summary>选项事件提示按当前语言重建，同语言沿用缓存，不清掉事件池和分支分析结果。</summary>
+	public static void TestMapHintLanguages()
+	{
+		const BindingFlags flags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		FieldInfo language = Mod.GetType("LOMAssistant.Config.ConfigManager").GetField("UiLanguage", flags);
+		object savedLanguage = language.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(language.FieldType);
+		FieldInfo value = language.FieldType.GetField("m_value", flags);
+		Type hintType = Mod.GetType("LOMAssistant.PositionOptionHints"), map = Mod.GetType("LOMAssistant.MapEventHints");
+		object hint = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(hintType);
+		FieldInfo key = hintType.GetField("_key", flags), text = hintType.GetField("_text", flags), shownLanguage = hintType.GetField("_displayLanguage", flags);
+		MethodInfo describe = hintType.GetMethod("Describe", flags);
+		IDictionary groups = (IDictionary)map.GetField("GroupCache", flags).GetValue(null);
+		var groupKey = ("", "");
+		bool hadGroup = groups.Contains(groupKey);
+		object savedGroup = groups[groupKey], empty = Activator.CreateInstance(groups.GetType().GetGenericArguments()[1]);
+		Type playerType = Assembly.Load("Mortal.Core").GetType("Mortal.Core.PlayerStatManagerData");
+		FieldInfo playerField = playerType.GetField("_instance", flags), native = typeof(UnityEngine.Object).GetField("m_CachedPtr", flags);
+		object savedPlayer = playerField.GetValue(null), player = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(playerType);
+		FieldInfo lastScript = map.GetField("LastScript", flags);
+		object savedScript = lastScript.GetValue(null);
+		try
+		{
+			// 只读托管字段；空事件组避免访问场景，非零标记仅供 Unity 的 null 判断。
+			native.SetValue(player, new IntPtr(1));
+			playerField.SetValue(null, player);
+			lastScript.SetValue(null, null);
+			groups[groupKey] = empty;
+			language.SetValue(null, setting);
+			foreach (int initial in Enumerable.Range(1, 5))
+			{
+				foreach (int current in Enumerable.Range(1, 5))
+				{
+					value.SetValue(setting, initial);
+					string cached = LOMAssistant.TextConverter.ForDisplay("随机事件") + " CACHED_EVENT";
+					key.SetValue(hint, "");
+					text.SetValue(hint, cached);
+					shownLanguage.SetValue(hint, LOMAssistant.TextConverter.DisplayLanguage);
+					value.SetValue(setting, current);
+					string actual = (string)describe.Invoke(hint, new object[] { null });
+					Assert(actual == (initial == current ? cached : ""), "切换语言必须重建提示，同语言应复用缓存");
+					Assert((string)shownLanguage.GetValue(hint) == LOMAssistant.TextConverter.DisplayLanguage, "提示缓存应记录当前语言");
+					Assert(ReferenceEquals(groups[groupKey], empty), "切换语言不能清掉已分析的事件池");
+					text.SetValue(hint, cached);
+					key.SetValue(hint, "OLD_OPTION");
+					Assert((string)describe.Invoke(hint, new object[] { null }) == "", "更换选项仍应重建提示");
+				}
+			}
+		}
+		finally
+		{
+			native.SetValue(player, IntPtr.Zero);
+			playerField.SetValue(null, savedPlayer);
+			lastScript.SetValue(null, savedScript);
+			if (hadGroup) groups[groupKey] = savedGroup; else groups.Remove(groupKey);
+			language.SetValue(null, savedLanguage);
+		}
+	}
+
+	/// <summary>去处按剧本编号比较；同名、截短、排序和显示语言都不能改变分支判断。</summary>
+	public static void TestBranchDestinationIdentity()
+	{
+		Type picker = Mod.GetType("LOMAssistant.BranchPicker");
+		Type type = picker.GetNestedType("Arm", BindingFlags.NonPublic);
+		var exits = type.GetField("Exits");
+		var raw = type.GetProperty("Exit");
+		var key = picker.GetMethod("DestinationKey", BindingFlags.Static | BindingFlags.NonPublic);
+		void SetDestinations(object arm, params StoryExit[] destinations)
+		{
+			var keys = (HashSet<string>)type.GetField("Destinations").GetValue(arm);
+			keys.Clear();
+			keys.UnionWith(destinations.Select(e => (string)key.Invoke(null, new object[] { e })).Where(k => k.Length > 0));
+		}
+		StoryExit Script(string id) => new StoryExit { Target = id };
+		object Arm(int branch, params StoryExit[] destinations)
+		{
+			object arm = Activator.CreateInstance(type, true);
+			type.GetField("Branch").SetValue(arm, branch);
+			SetDestinations(arm, destinations);
+			return arm;
+		}
+		object first = Arm(1, Script("ch8_4_11_1_1")), second = Arm(2, Script("ch8_4_11_1_2"));
+		var arms = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(type));
+		arms.Add(first);
+		arms.Add(second);
+		var worth = picker.GetMethod("Worth");
+		bool Worth(int predicted = 1) => (bool)worth.Invoke(null, new object[] { arms, predicted });
+		const string sameTitle = "接到「애초에 당신을 한 번 낚아채 …」";
+		exits.SetValue(first, new[] { sameTitle });
+		exits.SetValue(second, new[] { sameTitle });
+		Assert(Worth() && Worth(2), "官方韩文标题截短后相同，两个不同剧本仍应提示");
+		string[] destinations = { "接到「DIALOGUE；VALUE」", "回到标题（结局）" };
+		exits.SetValue(second, destinations);
+		string original = string.Join("；", destinations);
+		foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
+		{
+			string display = string.Join("；", ((string[])exits.GetValue(second)).Select(s => LOMAssistant.UiText.Translate(s, language)));
+			Assert(display.Contains("DIALOGUE；VALUE"), language + "：去处内容中的分号不能当作列表边界");
+			Assert((string)raw.GetValue(second) == original, language + "：显示不能改动原文去处");
+			Assert(Worth(), language + "：显示不能影响分支判断");
+			exits.SetValue(first, new[] { display });
+			exits.SetValue(second, new[] { display });
+			Assert(Worth(), language + "：显示完全相同也不能合并不同剧本");
+			exits.SetValue(second, destinations);
+		}
+		SetDestinations(first, Script("A"), Script("B"), Script("C"));
+		SetDestinations(second, Script("c"), Script("A"), Script("B"), Script("A"));
+		Assert(!Worth(), "相同剧本集合的顺序、重复项和大小写不应影响判断");
+		SetDestinations(second, Script("A"), Script("B"), Script("D"));
+		Assert(Worth(), "第三个去处不同，即使显示只列前两个也应提示");
+		SetDestinations(first, new StoryExit { ToMap = true });
+		SetDestinations(second, new StoryExit { ToTitle = true });
+		Assert(Worth(), "返回地图与标题应区分");
+		SetDestinations(second, Script("map"));
+		Assert(Worth(), "剧本编号不能与返回地图的类型混淆");
+		SetDestinations(first, new StoryExit { ToTitle = true });
+		SetDestinations(second, Script("title"));
+		Assert(Worth(), "剧本编号不能与返回标题的类型混淆");
+		SetDestinations(first, new StoryExit { ToMap = true, Target = "IGNORED" });
+		SetDestinations(second, new StoryExit { ToMap = true });
+		Assert(!Worth(), "返回地图优先于剧本编号，沿用原来的去处含义");
+		SetDestinations(first, new StoryExit { ToTitle = true, ToMap = true, Target = "IGNORED" });
+		SetDestinations(second, new StoryExit { ToTitle = true });
+		Assert(!Worth(), "返回标题优先于地图和剧本编号");
+		SetDestinations(first, new StoryExit());
+		SetDestinations(second, new StoryExit());
+		Assert(!Worth(), "没有去处也没有未读对白时仍不提示");
+		SetDestinations(second, Script("A"));
+		Assert(Worth() && !Worth(2), "无去处的另一支仍不单独触发提示");
+		Assert(!Worth(0), "算不出当前分支且没有未读对白时仍不提示");
+		type.GetField("Unread").SetValue(second, 1);
+		Assert(Worth(0), "算不出当前分支时仍应提示未读对白");
+		SetDestinations(first, Script("A"));
+		Assert(Worth(), "去处相同时仍应提示未读对白");
 	}
 
 	/// <summary>详情先翻译各个去处再拼接；原来的 Describe 仍返回原文，不改变非界面调用。</summary>

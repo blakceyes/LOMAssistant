@@ -315,7 +315,7 @@ public partial class StoryReviewPanel
 			}
 			if (shown.Any(row => row.Element == ConfigManager.ActionMode) && ActionModePatch.Mode != ActionModePatch.Normal)
 			{
-				GUILayout.Label(Red((ActionModePatch.Mode == ActionModePatch.Unlimited ? "行动点剩 1 点后不再消耗，用 ESC「空过」结束本旬。" : "")
+				GUILayout.Label(Red((ActionModePatch.Mode == ActionModePatch.Unlimited ? "行动点剩 1 点后不再消耗，用 ESC「空过」结束本旬。\n" : "")
 					+ "行动点不是「正常」时可能影响剧情触发（部分剧情、支线不触发或提前触发），请谨慎使用，切换前先存档。"), _rich);
 			}
 		}

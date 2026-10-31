@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using LOMAssistant.Config;
@@ -25,7 +26,11 @@ internal static class BranchPicker
 		public bool? Holds;
 		public int Lines, Unread;
 		/// <summary>接到哪里（剧情段名、回地图、结局），没有单独的去处为空。</summary>
-		public string Exit = "";
+		public string[] Exits = new string[0];
+		// 显示时逐项翻译，不从拼好的句子反拆。
+		public string Exit => string.Join("；", Exits);
+		// 判断去处用完整的剧本编号和去处类型，不受标题语言、截短或显示条数影响。
+		public HashSet<string> Destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 	}
 
 	public static bool Enabled => ConfigManager.EnableBranchPicker.Value;
@@ -77,9 +82,11 @@ internal static class BranchPicker
 					arm.Unread++;
 				}
 			}
-			arm.Exit = string.Join("；", s.Exits.Where(e => On(e.Path, branch))
+			var exits = s.Exits.Where(e => On(e.Path, branch)).ToList();
+			arm.Destinations.UnionWith(exits.Select(DestinationKey).Where(x => x.Length > 0));
+			arm.Exits = exits
 				.Select(e => e.ToTitle ? "回到标题（结局）" : e.ToMap ? "回到地图" : e.Target.Length > 0 ? "接到「" + SwitchRandom.Segment(e.Target) + "」" : "")
-				.Where(x => x.Length > 0).Distinct().Take(2).ToArray());
+				.Where(x => x.Length > 0).Distinct().Take(2).ToArray();
 			arms.Add(arm);
 		}
 		// 现在会走哪支：前面的支都读得出才算得准
@@ -103,11 +110,15 @@ internal static class BranchPicker
 		return arms;
 	}
 
+	// 返回地图、标题和接到剧本分别编号；剧本编号的大小写按 StoryScripts 的查找方式比较。
+	private static string DestinationKey(StoryExit exit) =>
+		exit.ToTitle ? "title" : exit.ToMap ? "map" : exit.Target.Length > 0 ? "script:" + exit.Target : "";
+
 	/// <summary>值得停下来问：换一支能看到没读过的对白，或者接到和现在会走的那支不一样的地方。</summary>
 	public static bool Worth(List<Arm> arms, int predicted)
 	{
 		Arm now = arms.Find(a => a.Branch == predicted);
-		return arms.Any(a => a != now && (a.Unread > 0 || (now != null && a.Exit.Length > 0 && a.Exit != now.Exit)));
+		return arms.Any(a => a != now && (a.Unread > 0 || (now != null && a.Destinations.Count > 0 && !a.Destinations.SetEquals(now.Destinations))));
 	}
 
 	/// <summary>这一支的对白看过没。</summary>

@@ -137,6 +137,7 @@ public partial class StoryReviewPanel
 				}
 				GUILayout.BeginVertical(_card);
 				GUILayout.Label("「" + fork.Segment + "」", _muted);
+				fork.RefreshOptions();
 				for (int i = 0; i < fork.Options.Count; i++)
 				{
 					bool picked = i == fork.Picked;

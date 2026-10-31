@@ -65,6 +65,10 @@ public class EventPicker : MonoBehaviour
 		public string Key;
 		public string Name;
 		public string Effects;
+		// 去处保留原文，量高度和显示时才逐项翻译，切换语言后不残留旧译文。
+		public string[] Exits;
+		public string DisplayEffects => Exits == null || Exits.Length == 0 ? Effects :
+			(string.IsNullOrEmpty(Effects) ? "" : Effects + "\n") + string.Join("；", Exits.Select(TextConverter.ForDisplay));
 		public int Rate;
 		/// <summary>这个事件的剧情一句都没读过（和地图建筑提示的「没看过」一样）。</summary>
 		public bool Unread;
@@ -310,11 +314,7 @@ public class EventPicker : MonoBehaviour
 			string label = (arm.Branch == fallback ? "以上条件都不满足" : $"第 {arm.Branch} 支") + (arm.Branch == predicted ? "　<color=#A3302A>会走这一支</color>" : "") + "　" + BranchPicker.ReadState(arm);
 			string mark = arm.Holds == true ? RichText.Green("满足") + "　" : arm.Holds == false ? RichText.Red("不满足") + "　" : "";
 			string detail = arm.Branch == fallback ? "" : mark + arm.Condition;
-			if (arm.Exit.Length > 0)
-			{
-				detail += (detail.Length > 0 ? "\n" : "") + arm.Exit;
-			}
-			Choices.Add(new Choice { Key = SwitchRandom.RuleKey(name, arm.Branch), Forced = arm.Branch, Name = label, Effects = detail });
+			Choices.Add(new Choice { Key = SwitchRandom.RuleKey(name, arm.Branch), Forced = arm.Branch, Name = label, Effects = detail, Exits = arm.Exits });
 		}
 		_state = State.Waiting;
 		_pool = pool;
@@ -541,13 +541,15 @@ public class EventPicker : MonoBehaviour
 		{
 			return (i < 9 ? (i + 1) + ". " : "") + c.Name;
 		}
+		// 随机事件名按当前语言重新取；分支文字照旧，编号和权重不动。
+		string name = c.Data != null ? DataHelper.GetEventName(c.Data) : c.Name;
 		if (c.Unmet)
 		{
-			return c.Name + "　<color=#73644F>条件没满足</color>" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
+			return name + "　<color=#73644F>条件没满足</color>" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
 		}
 		int rate = EventRules.EffectiveRate(c.Key, c.Rate, Choices.Where(x => !x.Unmet).Select(x => x.Key));
 		string odds = rate == 0 && EventRules.Get(c.Key) == EventRules.Never ? "不出" : $"{rate * 100f / Mathf.Max(1, total):0.#}%";
-		return (i < 9 ? (i + 1) + ". " : "") + c.Name + $"（{odds}）" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
+		return (i < 9 ? (i + 1) + ". " : "") + name + $"（{odds}）" + (c.Unread ? "　" + RichText.Golden("没看过") : "");
 	}
 
 	// 事件名、效果里的绿、红、金是给深色底配的，画窗口期间在宣纸底上换成看得清的同色系（PanelTheme.MapColors）
@@ -580,9 +582,10 @@ public class EventPicker : MonoBehaviour
 		for (int i = 0; i < shown; i++)
 		{
 			height += _button.CalcHeight(new GUIContent(Label(i, total)), width) + _button.margin.vertical;
-			if (!string.IsNullOrEmpty(Choices[i].Effects))
+			string effects = Choices[i].DisplayEffects;
+			if (!string.IsNullOrEmpty(effects))
 			{
-				height += _effects.CalcHeight(new GUIContent(Choices[i].Effects), width) + _effects.margin.vertical;
+				height += _effects.CalcHeight(new GUIContent(effects), width) + _effects.margin.vertical;
 			}
 		}
 		if (fold != null)
@@ -603,6 +606,7 @@ public class EventPicker : MonoBehaviour
 				DrawFold(fold, viewHeight);
 			}
 			string text = Label(i, total);
+			string effects = c.DisplayEffects;
 			GUILayout.BeginHorizontal();
 			if (GUILayout.Button(text, i == _highlight ? _highlighted : _button))
 			{
@@ -619,9 +623,9 @@ public class EventPicker : MonoBehaviour
 				GUILayout.Space(ruleWidth * 2f + _rule.margin.left * 2f);
 				GUILayout.EndHorizontal();
 				// 没有说明的（「以上条件都不满足」那支）不画空行：算高度时也没算它，画了就多出滚动条
-				if (!string.IsNullOrEmpty(c.Effects))
+				if (!string.IsNullOrEmpty(effects))
 				{
-					GUILayout.Label(c.Effects, _effects);
+					GUILayout.Label(effects, _effects);
 				}
 				continue;
 			}
@@ -636,9 +640,9 @@ public class EventPicker : MonoBehaviour
 				EventRules.Set(c.Key, c.Name, rule == EventRules.Never ? EventRules.None : EventRules.Never);
 			}
 			GUILayout.EndHorizontal();
-			if (!string.IsNullOrEmpty(c.Effects))
+			if (!string.IsNullOrEmpty(effects))
 			{
-				GUILayout.Label(c.Effects, _effects);
+				GUILayout.Label(effects, _effects);
 			}
 		}
 		if (!_showUnmet && fold != null)

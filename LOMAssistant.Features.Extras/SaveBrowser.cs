@@ -1040,7 +1040,7 @@ public class SaveBrowser : MonoBehaviour
 		SaveNotePatch.SetNote(e.Slot, text);
 		if (_rowNotes.TryGetValue(e, out Text row) && row != null)
 		{
-			row.text = text.Length > 0 ? "【" + text + "】" : "（无备注）";
+			row.text = text.Length > 0 ? "【" + text + "】" : TextConverter.ForDisplay("（无备注）");
 			row.color = text.Length > 0 ? Gold : new Color(0.42f, 0.39f, 0.35f, 1f);
 		}
 	}
