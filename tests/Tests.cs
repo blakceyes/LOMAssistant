@@ -590,78 +590,99 @@ public static class Tests
 	/// <summary>去处按剧本编号比较；同名、截短、排序和显示语言都不能改变分支判断。</summary>
 	public static void TestBranchDestinationIdentity()
 	{
-		Type picker = Mod.GetType("LOMAssistant.BranchPicker");
-		Type type = picker.GetNestedType("Arm", BindingFlags.NonPublic);
-		var exits = type.GetField("Exits");
-		var raw = type.GetProperty("Exit");
-		var key = picker.GetMethod("DestinationKey", BindingFlags.Static | BindingFlags.NonPublic);
-		void SetDestinations(object arm, params StoryExit[] destinations)
+		const BindingFlags flags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		FieldInfo seen = Mod.GetType("LOMAssistant.Config.ConfigManager").GetField("BranchPickerSeen", flags);
+		object savedSeen = seen.GetValue(null);
+		object setting = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(seen.FieldType);
+		FieldInfo seenValue = seen.FieldType.GetField("m_value", flags);
+		try
 		{
-			var keys = (HashSet<string>)type.GetField("Destinations").GetValue(arm);
-			keys.Clear();
-			keys.UnionWith(destinations.Select(e => (string)key.Invoke(null, new object[] { e })).Where(k => k.Length > 0));
+			seen.SetValue(null, setting);
+			foreach (bool enabled in new[] { false, true })
+			{
+				seenValue.SetValue(setting, enabled);
+				Type picker = Mod.GetType("LOMAssistant.BranchPicker");
+				Type type = picker.GetNestedType("Arm", BindingFlags.NonPublic);
+				var exits = type.GetField("Exits");
+				var raw = type.GetProperty("Exit");
+				var key = picker.GetMethod("DestinationKey", BindingFlags.Static | BindingFlags.NonPublic);
+				void SetDestinations(object arm, params StoryExit[] destinations)
+				{
+					var keys = (HashSet<string>)type.GetField("Destinations").GetValue(arm);
+					keys.Clear();
+					keys.UnionWith(destinations.Select(e => (string)key.Invoke(null, new object[] { e })).Where(k => k.Length > 0));
+				}
+				StoryExit Script(string id) => new StoryExit { Target = id };
+				object Arm(int branch, params StoryExit[] destinations)
+				{
+					object arm = Activator.CreateInstance(type, true);
+					type.GetField("Branch").SetValue(arm, branch);
+					SetDestinations(arm, destinations);
+					return arm;
+				}
+				object first = Arm(1, Script("ch8_4_11_1_1")), second = Arm(2, Script("ch8_4_11_1_2"));
+				var arms = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(type));
+				arms.Add(first);
+				arms.Add(second);
+				var worth = picker.GetMethod("Worth");
+				bool Worth(int predicted = 1) => (bool)worth.Invoke(null, new object[] { arms, predicted });
+				const string sameTitle = "接到「애초에 당신을 한 번 낚아채 …」";
+				exits.SetValue(first, new[] { sameTitle });
+				exits.SetValue(second, new[] { sameTitle });
+				Assert(Worth() && Worth(2), "官方韩文标题截短后相同，两个不同剧本仍应提示");
+				string[] destinations = { "接到「DIALOGUE；VALUE」", "回到标题（结局）" };
+				exits.SetValue(second, destinations);
+				string original = string.Join("；", destinations);
+				foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
+				{
+					string display = string.Join("；", ((string[])exits.GetValue(second)).Select(s => LOMAssistant.UiText.Translate(s, language)));
+					Assert(display.Contains("DIALOGUE；VALUE"), language + "：去处内容中的分号不能当作列表边界");
+					Assert((string)raw.GetValue(second) == original, language + "：显示不能改动原文去处");
+					Assert(Worth(), language + "：显示不能影响分支判断");
+					exits.SetValue(first, new[] { display });
+					exits.SetValue(second, new[] { display });
+					Assert(Worth(), language + "：显示完全相同也不能合并不同剧本");
+					exits.SetValue(second, destinations);
+				}
+				SetDestinations(first, Script("A"), Script("B"), Script("C"));
+				SetDestinations(second, Script("c"), Script("A"), Script("B"), Script("A"));
+				Assert(!Worth(), "相同剧本集合的顺序、重复项和大小写不应影响判断");
+				SetDestinations(second, Script("A"), Script("B"), Script("D"));
+				Assert(Worth(), "第三个去处不同，即使显示只列前两个也应提示");
+				SetDestinations(first, new StoryExit { ToMap = true });
+				SetDestinations(second, new StoryExit { ToTitle = true });
+				Assert(Worth(), "返回地图与标题应区分");
+				SetDestinations(second, Script("map"));
+				Assert(Worth(), "剧本编号不能与返回地图的类型混淆");
+				SetDestinations(first, new StoryExit { ToTitle = true });
+				SetDestinations(second, Script("title"));
+				Assert(Worth(), "剧本编号不能与返回标题的类型混淆");
+				SetDestinations(first, new StoryExit { ToMap = true, Target = "IGNORED" });
+				SetDestinations(second, new StoryExit { ToMap = true });
+				Assert(!Worth(), "返回地图优先于剧本编号，沿用原来的去处含义");
+				SetDestinations(first, new StoryExit { ToTitle = true, ToMap = true, Target = "IGNORED" });
+				SetDestinations(second, new StoryExit { ToTitle = true });
+				Assert(!Worth(), "返回标题优先于地图和剧本编号");
+				SetDestinations(first, new StoryExit());
+				SetDestinations(second, new StoryExit());
+				Assert(!Worth(), "没有去处也没有未读对白时仍不提示");
+				SetDestinations(second, Script("A"));
+				Assert(Worth() && !Worth(2), "无去处的另一支仍不单独触发提示");
+				Assert(!Worth(0), "算不出当前分支且没有未读对白时仍不提示");
+				type.GetField("Unread").SetValue(second, 1);
+				Assert(Worth(0), "算不出当前分支时仍应提示未读对白");
+				SetDestinations(first, Script("A"));
+				Assert(Worth(), "去处相同时仍应提示未读对白");
+				// 已读对白是否停下只看设置，不能改变目的地比较。
+				type.GetField("Unread").SetValue(second, 0);
+				type.GetField("Lines").SetValue(second, 1);
+				Assert(Worth() == enabled, "同一去处的已读分支应按「看过的分支也停」设置判断");
+			}
 		}
-		StoryExit Script(string id) => new StoryExit { Target = id };
-		object Arm(int branch, params StoryExit[] destinations)
+		finally
 		{
-			object arm = Activator.CreateInstance(type, true);
-			type.GetField("Branch").SetValue(arm, branch);
-			SetDestinations(arm, destinations);
-			return arm;
+			seen.SetValue(null, savedSeen);
 		}
-		object first = Arm(1, Script("ch8_4_11_1_1")), second = Arm(2, Script("ch8_4_11_1_2"));
-		var arms = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(type));
-		arms.Add(first);
-		arms.Add(second);
-		var worth = picker.GetMethod("Worth");
-		bool Worth(int predicted = 1) => (bool)worth.Invoke(null, new object[] { arms, predicted });
-		const string sameTitle = "接到「애초에 당신을 한 번 낚아채 …」";
-		exits.SetValue(first, new[] { sameTitle });
-		exits.SetValue(second, new[] { sameTitle });
-		Assert(Worth() && Worth(2), "官方韩文标题截短后相同，两个不同剧本仍应提示");
-		string[] destinations = { "接到「DIALOGUE；VALUE」", "回到标题（结局）" };
-		exits.SetValue(second, destinations);
-		string original = string.Join("；", destinations);
-		foreach (string language in new[] { "Korean", "Japanese", "English", "ChineseSimplified", "ChineseTraditional" })
-		{
-			string display = string.Join("；", ((string[])exits.GetValue(second)).Select(s => LOMAssistant.UiText.Translate(s, language)));
-			Assert(display.Contains("DIALOGUE；VALUE"), language + "：去处内容中的分号不能当作列表边界");
-			Assert((string)raw.GetValue(second) == original, language + "：显示不能改动原文去处");
-			Assert(Worth(), language + "：显示不能影响分支判断");
-			exits.SetValue(first, new[] { display });
-			exits.SetValue(second, new[] { display });
-			Assert(Worth(), language + "：显示完全相同也不能合并不同剧本");
-			exits.SetValue(second, destinations);
-		}
-		SetDestinations(first, Script("A"), Script("B"), Script("C"));
-		SetDestinations(second, Script("c"), Script("A"), Script("B"), Script("A"));
-		Assert(!Worth(), "相同剧本集合的顺序、重复项和大小写不应影响判断");
-		SetDestinations(second, Script("A"), Script("B"), Script("D"));
-		Assert(Worth(), "第三个去处不同，即使显示只列前两个也应提示");
-		SetDestinations(first, new StoryExit { ToMap = true });
-		SetDestinations(second, new StoryExit { ToTitle = true });
-		Assert(Worth(), "返回地图与标题应区分");
-		SetDestinations(second, Script("map"));
-		Assert(Worth(), "剧本编号不能与返回地图的类型混淆");
-		SetDestinations(first, new StoryExit { ToTitle = true });
-		SetDestinations(second, Script("title"));
-		Assert(Worth(), "剧本编号不能与返回标题的类型混淆");
-		SetDestinations(first, new StoryExit { ToMap = true, Target = "IGNORED" });
-		SetDestinations(second, new StoryExit { ToMap = true });
-		Assert(!Worth(), "返回地图优先于剧本编号，沿用原来的去处含义");
-		SetDestinations(first, new StoryExit { ToTitle = true, ToMap = true, Target = "IGNORED" });
-		SetDestinations(second, new StoryExit { ToTitle = true });
-		Assert(!Worth(), "返回标题优先于地图和剧本编号");
-		SetDestinations(first, new StoryExit());
-		SetDestinations(second, new StoryExit());
-		Assert(!Worth(), "没有去处也没有未读对白时仍不提示");
-		SetDestinations(second, Script("A"));
-		Assert(Worth() && !Worth(2), "无去处的另一支仍不单独触发提示");
-		Assert(!Worth(0), "算不出当前分支且没有未读对白时仍不提示");
-		type.GetField("Unread").SetValue(second, 1);
-		Assert(Worth(0), "算不出当前分支时仍应提示未读对白");
-		SetDestinations(first, Script("A"));
-		Assert(Worth(), "去处相同时仍应提示未读对白");
 	}
 
 	/// <summary>详情先翻译各个去处再拼接；原来的 Describe 仍返回原文，不改变非界面调用。</summary>

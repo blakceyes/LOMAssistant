@@ -722,7 +722,7 @@ public static class UiTextEnglish
 		["建议多周目玩家选择"] = "For replaying",
 		["进阶"] = "Advanced",
 		["建议想收集全部剧情分支的玩家选择"] = "For collecting every story branch",
-		["打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开判断前选走哪一支和强行触发条件没满足的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品"] = "Story aids such as the branch panel, flag notices, event picking and story jump are on; picking the branch before a check and forcing events and options whose conditions aren't met are off. The only cheats are unlimited training and forging and free forging money. The lecture hall only shows how to reach each entry, and the fourth senior doesn't sell everything",
+		["打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开判断前选走哪一支和强行触发条件没满足的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品"] = "Story aids such as the branch panel, flag notices, event picking and story jump are on; picking the branch before a check and forcing events and options whose conditions aren't met are off. The only cheats are unlimited training and forging, and no silver cost for forging and alchemy. The lecture hall only shows how to reach each entry, and the fourth senior doesn't sell everything",
 		["建议补全剧情的老玩家选择"] = "For completing every story",
 		["选一个预设"] = "Choose a preset",
 		["之后随时可以在设置页最上面换，也可以逐项调整。存档、提速、界面、热键等设置不受影响。"] = "You can change it any time at the top of the settings tab, or adjust each setting. Saves, speed-ups, interface and hotkeys are not affected.",
