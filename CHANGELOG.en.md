@@ -2,6 +2,17 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.3.3 (2026-11-01)
+
+- **Time-limited story reminder** (new setting; Assist and higher presets turn it on): when a story whose conditions are met but hasn't triggered yet has 3 periods or fewer left in its window, the top left of the training map shows how many periods are left, until when, and where to go to trigger it; the Now tab marks these quests too.
+- **Route map**: clicking a stop shows "Next" at the top with the next stop's date, place and conditions; new "Options in this stop", folded by default, lists each option's conditions and results; a side quest step shows the next step and which main stop it rejoins. "Current main" is now "Back to now", and opening the route map selects the current stop. Parallel routes such as the three study-abroad routes each keep their own lane instead of crossing; lines that split off or rejoin no longer run along the main line; the next stop has a gold ring.
+- **Now tab**: fixed the options being missing when option hints are off, and the options of action menus (rest, chat and so on) not being recognized as the ones on screen; results read the same as next to the in-game options.
+- **AI companion**: fixed streamed answers losing what was already written when the AI looks something up partway.
+- **One-click set**: also changes stats locked on the Stats tab; before, clicking did nothing.
+- **Unlimited training and forging**: "Next level" in training, forging and alchemy now reaches the next level in one click instead of two.
+- **Flag names**: fixed a wide gap between some flag names and their values.
+- **Korean and English UI**: corrected the "Advanced" preset description (PR #38).
+
 ## 3.3.2 (2026-10-31)
 
 - **Pick the branch before a check**: fixed the picker being covered by the black screen when it stops at the start of a scene or before a fade-in, so it could neither be seen nor used. When the same check comes up several times in one scene, it now follows your first pick instead of asking again.
