@@ -146,6 +146,8 @@ public static class AiChat
 		// 同一个问题里一模一样的查询不再重查、不再把结果再发一遍
 		var looked = new HashSet<string>();
 		AiDebug.Turn(persona?.Name ?? "攻略助手", system, asking.Text);
+		// 前几轮边说话边查资料时已经写出来的话：接着往下写的时候还留在屏幕上，最后接在回答前面（不然流式显示的那段一换轮就没了）
+		string said = "";
 		bool rewrite = false;
 		for (int round = 0; round < MaxRounds + (rewrite ? 1 : 0) && !_stop; round++)
 		{
@@ -160,10 +162,10 @@ public static class AiChat
 				: last
 				? History.Concat(new[] { asking, new ChatMessage { Role = ChatMessage.User, Text = Digest(turn) } }).ToList()
 				: History.Concat(new[] { asking }).Concat(turn.Skip(1)).ToList();
-			Partial = "";
+			Partial = said;
 			yield return LlmClient.Complete(provider, ConfigManager.AiBaseUrl.Value, ConfigManager.AiApiKey.Value, Model,
-				system, send, !last || keep, last ? (Deep ? 8000 : Fast ? 3000 : 6000) : Deep ? 4000 : Fast ? 1500 : 2000, r => reply = r, keep, text => Partial = WrongLanguage(text, question, TextConverter.DisplayLanguage) ? "" : Showable(text));
-			Partial = "";
+				system, send, !last || keep, last ? (Deep ? 8000 : Fast ? 3000 : 6000) : Deep ? 4000 : Fast ? 1500 : 2000, r => reply = r, keep, text => Partial = Join(said, WrongLanguage(text, question, TextConverter.DisplayLanguage) ? "" : Showable(text)));
+			Partial = said;
 			if (_stop)
 			{
 				break;
@@ -207,6 +209,11 @@ public static class AiChat
 				}
 				break;
 			}
+			string early = MoodTag.Replace(StripIds(StripToolMarkup(reply.Text ?? ""), persona != null), "").Trim();
+			if (early.Length > 0 && !WrongLanguage(early, question, TextConverter.DisplayLanguage))
+			{
+				said = Join(said, early);
+			}
 			turn.Add(new ChatMessage { Role = ChatMessage.Assistant, Text = reply.Text, Calls = reply.Calls, Raw = reply.Raw, Reasoning = reply.Reasoning ?? "" });
 			foreach (ToolCall call in reply.Calls)
 			{
@@ -227,6 +234,11 @@ public static class AiChat
 				AiDebug.Tool(call.Name, call.Args.ToString(Newtonsoft.Json.Formatting.None, new Newtonsoft.Json.JsonConverter[0]), result);
 				turn.Add(new ChatMessage { Role = ChatMessage.Tool, CallId = call.Id, Text = result });
 			}
+		}
+		Partial = "";
+		if (!_stop && answer != null && said.Length > 0)
+		{
+			answer = answer.StartsWith("（查了很多资料") ? said : Join(said, answer);
 		}
 		// 界面是英、韩、日文，玩家也没用中文问，回答却是中文（游戏原话随当前语言，Mod 的人设补充和工具说明仍可能带来中文）：
 		// 拿这段回答再问一次，只让它改写成界面语言。繁体界面回答成简体时直接转成繁体
@@ -376,6 +388,10 @@ public static class AiChat
 	}
 
 	// 流式显示的半截回答：去掉工具调用格式和末尾的表情标记（可能只写了一半）
+	/// <summary>前面已经说过的话和接着写的话，中间空一行。</summary>
+	private static string Join(string before, string after) =>
+		before.Length == 0 ? after : after.Length == 0 ? before : before + "\n\n" + after;
+
 	private static string Showable(string text)
 	{
 		string t = StripToolMarkup(text);
