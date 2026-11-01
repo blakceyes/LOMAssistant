@@ -34,8 +34,46 @@ public partial class StoryReviewPanel
 		public bool Visited, Dated;
 	}
 
+	/// <summary>
+	/// 主线骨架：几条路线并行的地方（三条留学线、江陵、跟不跟大师兄、你的决策……）每站放哪条车道，手工排好；
+	/// 按连线自动排容易把并行的路线交错在一起。车道参考赵活系统（Toufff，MIT）的路线图。0 是主线，负的在上面，正的在下面。
+	/// 不在表里的站（游戏更新新加的）照旧自动排。
+	/// </summary>
+	private static readonly Dictionary<string, int> RouteLanes = new Dictionary<string, int>(StringComparer.Ordinal)
+	{
+		["M0001"] = 0, ["M0002"] = 0, ["M0003"] = 0,
+		// 序章（第 3 年末，读回快照前）
+		["M0000_01"] = -1, ["M0000_02"] = -1, ["M0000_03"] = -1, ["M0000_04"] = -1,
+		["M2000_01"] = 0, ["M2003_02"] = -1, ["M2003_01"] = 1, ["M2004_01"] = 0, ["M2005_01"] = 0, ["M2005_02"] = 0,
+		// 崆峒留学
+		["M2006_03"] = -1, ["M2007_02"] = -1, ["M2008_01"] = -1,
+		// 唐门留学
+		["M2006_01"] = 1, ["M2007_01"] = 1, ["M2007_03"] = 1, ["M2007_04"] = 1, ["M2007_05"] = 1,
+		// 破庙之后留在唐门
+		["M2009_01"] = 2, ["M2010_02"] = 2, ["M2010_03"] = 2, ["M2010_04"] = 2,
+		// 青城留学
+		["M2011_01"] = 3, ["M2011_02"] = 3, ["M2011_03"] = 3, ["M2011_04"] = 3, ["M2011_05"] = 3, ["M2011_06"] = 3,
+		["M2008_02"] = 0, ["M3001_01"] = 0, ["M3001_02"] = -1, ["M3001_03"] = 1, ["M3002_01"] = 0, ["M3003_01"] = 0, ["M3003_02"] = 0,
+		// 不跟大师兄
+		["M3004_01"] = 1, ["M3004_02"] = 1,
+		["M3005_01"] = 0, ["M3005_02"] = 0, ["M4001_01"] = 0, ["M4002_01"] = 0, ["M4002_02"] = 0,
+		["M5001_00"] = 0, ["M5001_01"] = 0, ["M5001_02"] = 0, ["M5001_03"] = 0, ["M5001_04"] = 0, ["M5001_05"] = 0,
+		["M6001_01"] = 0, ["M6001_02"] = 0, ["M6001_03"] = 0,
+		// 你的决策：退隐江湖在下，西武林盟在上，战他娘亲留在主线
+		["M6002_01"] = 1, ["M6002_02"] = 0,
+		["M6003_01"] = -1, ["M6003_02"] = -1, ["M6003_03"] = -1, ["M6003_04"] = -1,
+		["M7001_01"] = 1, ["M7002_01"] = 0, ["M7003_01"] = 0,
+	};
+
+	/// <summary>下一站的金圈。</summary>
+	private static Color Gold => PanelTheme.Dark ? new Color(0.85f, 0.68f, 0.3f, 1f) : new Color(0.6f, 0.44f, 0.1f, 1f);
+
 	private RouteLayout _route;
 	private int _routeBuiltFor = -1;
+	/// <summary>上一次画路线图的帧：隔了几帧才又画，就是刚切到这一页（或重新打开窗口）。</summary>
+	private int _routeShownFrame = -1;
+	/// <summary>打开时自动选中的那一站：还停在它上面（没自己点别的）时，下次打开换到新的当前主线。</summary>
+	private StoryMission _routeAutoPicked;
 	private float _routeZoom = 1f, _routeBuiltZoom;
 	private Vector2 _routeScroll, _routeDetailScroll;
 	private string _routeSearch = "", _routeLastQuery = "";
@@ -77,11 +115,14 @@ public partial class StoryReviewPanel
 		if (GUI.Button(new Rect(bx, r.y, S(40), S(36)), "－", _button)) _routeZoom = Mathf.Max(0.6f, _routeZoom - 0.1f);
 		GUI.Label(new Rect(bx + S(44), r.y, S(60), S(36)), Mathf.RoundToInt(_routeZoom * 100) + "%", _center);
 		if (GUI.Button(new Rect(bx + S(108), r.y, S(40), S(36)), "＋", _button)) _routeZoom = Mathf.Min(1.6f, _routeZoom + 0.1f);
-		if (GUI.Button(new Rect(bx + S(160), r.y, TextWidth("当前主线", _button, S(130)), S(36)), "当前主线", _button) && _route.Points.TryGetValue(StoryAtlas.CurrentMain, out Vector2 now))
+		// 回到现在：选中当前主线这一站（红色「今」字）、滚到它。刚打开路线图时，没选别的（或还停在上次自动选的那站）也自动这样做
+		bool center = GUI.Button(new Rect(bx + S(160), r.y, TextWidth("回到现在", _button, S(130)), S(36)), "回到现在", _button);
+		bool opened = Time.frameCount - _routeShownFrame > 2;
+		_routeShownFrame = Time.frameCount;
+		bool auto = !center && opened && (_routePicked == null || _routePicked == _routeAutoPicked) && _routeSide == null && _routeHeroine == null && query.Length < 2;
+		if ((center || auto) && PickStation(StoryAtlas.Find(StoryAtlas.CurrentMain), r))
 		{
-			_routePicked = StoryAtlas.Find(StoryAtlas.CurrentMain);
-			_routeSide = null;
-			_routeScroll = new Vector2(Mathf.Max(0, now.x - r.width * 0.3f), Mathf.Max(0, now.y - r.height * 0.4f));
+			_routeAutoPicked = auto ? _routePicked : null;
 		}
 		if (GUI.Button(new Rect(r.xMax - S(130), r.y, S(130), S(36)), "重新生成", _button))
 		{
@@ -241,22 +282,15 @@ public partial class StoryReviewPanel
 			}
 			return allowSpine ? 0 : 1;
 		}
-		foreach (StoryMission m in placed.Where(m => layout.Spine.Contains(m.Key)))
+		// 手工排好车道的站先放；同一天落在同一道上的，往离主线远的方向挪一道（主线上的往两边找）
+		foreach (StoryMission m in placed.Where(m => RouteLanes.ContainsKey(m.Key)))
 		{
-			Take(m.Key, Nearest(XOf(layout, date[m.Key].Value), widths[m.Key], true));
-		}
-		foreach (StoryMission m in placed.Where(m => !layout.Spine.Contains(m.Key)))
-		{
+			int want = RouteLanes[m.Key], chosen = want;
 			float px = XOf(layout, date[m.Key].Value);
-			var preds = edges.Where(e => e.To == m.Key && lane.ContainsKey(e.From)).Select(e => e.From).ToList();
-			// 接着前一站所在的岔路车道；从主线上岔出来的，从主线下面一道开始找
-			string from = preds.FirstOrDefault(p => !layout.Spine.Contains(p)) ?? preds.FirstOrDefault();
-			int want = from == null ? 1 : lane[from] == 0 ? 1 : lane[from];
-			int chosen = want;
-			for (int step = 0; step < 24; step++)
+			for (int step = 0; step < 12; step++)
 			{
-				int candidate = want + (step % 2 == 0 ? step / 2 : -(step / 2 + 1));
-				if (candidate != 0 && Free(candidate, px, widths[m.Key]))
+				int candidate = want != 0 ? want + Math.Sign(want) * step : step == 0 ? 0 : step % 2 == 1 ? (step + 1) / 2 : -(step / 2);
+				if (Free(candidate, px, widths[m.Key]))
 				{
 					chosen = candidate;
 					break;
@@ -264,6 +298,87 @@ public partial class StoryReviewPanel
 			}
 			Take(m.Key, chosen);
 		}
+		foreach (StoryMission m in placed.Where(m => layout.Spine.Contains(m.Key) && !lane.ContainsKey(m.Key)))
+		{
+			Take(m.Key, Nearest(XOf(layout, date[m.Key].Value), widths[m.Key], true));
+		}
+		// 岔路按整条路线放：沿着剧本写明的连线一站接一站的算同一条路线（崆峒留学、青城留学、留守唐门……），
+		// 从头到尾占同一条车道，别的路线不能插进它占着的这一段，几条并行的路线才不会交错在一起。
+		// 一站往后岔出几条路时，第一条接着这条路线，其余各自另起一条
+		var track = new Dictionary<string, int>(StringComparer.Ordinal);
+		var tracks = new List<List<string>>();
+		foreach (StoryMission m in placed.Where(m => !lane.ContainsKey(m.Key)))
+		{
+			int t = -1;
+			foreach (var e in edges.Where(e => !e.ByDate && e.To == m.Key && track.ContainsKey(e.From)))
+			{
+				List<string> run = tracks[track[e.From]];
+				float tail = XOf(layout, date[e.From].Value), here = XOf(layout, date[m.Key].Value);
+				if (run[run.Count - 1] == e.From && here - tail >= (widths[e.From] + widths[m.Key]) / 2f + Z(14))
+				{
+					t = track[e.From];
+					break;
+				}
+			}
+			if (t < 0)
+			{
+				t = tracks.Count;
+				tracks.Add(new List<string>());
+			}
+			tracks[t].Add(m.Key);
+			track[m.Key] = t;
+		}
+		// 这一道上 [x0, x1] 这一段空着：别的站（连同名字的宽度）都不在里面
+		bool FreeSpan(int l, float x0, float x1) => !usedWidth.TryGetValue(l, out var xs) || xs.All(v => v.X + v.W / 2f + Z(14) <= x0 || v.X - v.W / 2f - Z(14) >= x1);
+		foreach (List<string> run in tracks)
+		{
+			float x0 = run.Min(k => XOf(layout, date[k].Value) - widths[k] / 2f), x1 = run.Max(k => XOf(layout, date[k].Value) + widths[k] / 2f);
+			// 岔出来的线沿这条车道从出发那站走过来，合回去的线沿这条车道走到要合的那站前面：这两段也算这条路线占着的
+			var inRun = new HashSet<string>(run, StringComparer.Ordinal);
+			foreach (var e in edges.Where(e => !e.ByDate && inRun.Contains(e.To) && !inRun.Contains(e.From) && date[e.From] != null))
+			{
+				x0 = Mathf.Min(x0, XOf(layout, date[e.From].Value) + Z(20));
+			}
+			foreach (var e in edges.Where(e => !e.ByDate && inRun.Contains(e.From) && !inRun.Contains(e.To) && date[e.To] != null))
+			{
+				x1 = Mathf.Max(x1, XOf(layout, date[e.To].Value) - Z(20));
+			}
+			// 从岔路上再岔出来的挨着那条岔路找；从主线上岔出来的，从主线下面一道开始找
+			string from = edges.Where(e => e.To == run[0] && lane.ContainsKey(e.From)).Select(e => e.From).OrderBy(k => layout.Spine.Contains(k) ? 1 : 0).FirstOrDefault();
+			int want = from == null || lane[from] == 0 ? 1 : lane[from];
+			int chosen = want;
+			for (int step = 0; step < 40; step++)
+			{
+				int candidate = want + (step % 2 == 0 ? step / 2 : -(step / 2 + 1));
+				if (candidate != 0 && FreeSpan(candidate, x0, x1))
+				{
+					chosen = candidate;
+					break;
+				}
+			}
+			foreach (string k in run)
+			{
+				Take(k, chosen);
+			}
+			usedWidth[chosen].Add(((x0 + x1) / 2f, x1 - x0 - Z(28)));
+		}
+		// 放完以后主线就是第 0 道上的站：走线、按日期接的虚线都按它
+		layout.Spine.Clear();
+		layout.Spine.UnionWith(lane.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+		// 没有剧本写明会走到的站（按日期自动开始的）只从主线上日期最近的前一站接虚线，不从别的岔路接过来，免得几条路线连在一起
+		var dated = new List<(string From, string To, bool ByDate)>();
+		foreach (string to in edges.Where(e => e.ByDate).Select(e => e.To).Distinct().Where(k => !RouteLanes.TryGetValue(k, out int fixedLane) || fixedLane == 0).ToList())
+		{
+			string src = placed.Where(p => layout.Spine.Contains(p.Key) && date[p.Key] < date[to]).OrderByDescending(p => date[p.Key]).Select(p => p.Key).FirstOrDefault();
+			if (src != null)
+			{
+				dated.Add((src, to, true));
+			}
+		}
+		edges.RemoveAll(e => e.ByDate);
+		edges.AddRange(dated);
+		layout.Edges.Clear();
+		layout.Edges.AddRange(edges);
 		// 岔开的线上写触发条件：去掉每条都有的时间、行动次数，留第一条，写短
 		foreach (var (from, to, byDate) in edges)
 		{
@@ -434,7 +549,9 @@ public partial class StoryReviewPanel
 				bool walked = ma != null && mb != null && ma.Visited && mb.Visited;
 				// 岔开的线在出发的那一站后面就拐，合流的线在到的那一站前面才拐，看得出从哪分、到哪合
 				int outs = layout.Edges.Count(x => x.From == from), ins = layout.Edges.Count(x => x.To == to);
-				float bend = outs > 1 && ins <= 1 ? a.x + Z(26) : b.x - Z(26);
+				bool fromSpine = layout.Spine.Contains(from), toSpine = layout.Spine.Contains(to);
+				// 从主线岔到岔路：一离开就拐，沿岔路那道走；从岔路合回主线：沿岔路那道走到主线那站前面才拐。都不沿着主线走，不和主线叠在一起
+				float bend = fromSpine && !toSpine ? a.x + Z(26) : !fromSpine && toSpine ? b.x - Z(26) : outs > 1 && ins <= 1 ? a.x + Z(26) : b.x - Z(26);
 				Elbow(new Vector2(a.x + Z(10), a.y), new Vector2(b.x - Z(10), b.y), walked ? Jade : InkLine, walked ? Z(3) : Z(2), byDate, bend);
 				// 岔开的线上写它的触发条件，写在拐过去以后那段横线上面
 				if (layout.EdgeLabels.TryGetValue((from, to), out string why) && Mathf.Abs(a.y - b.y) > 1f)
@@ -445,7 +562,8 @@ public partial class StoryReviewPanel
 				}
 			}
 		}
-		// 站点：墨圈，读得越多圈里墨越浓；走过的名字前打勾，当前主线盖一枚朱砂印
+		// 站点：墨圈，读得越多圈里墨越浓；走过的名字前打勾，当前主线盖一枚朱砂印，接在它后面的下一站套一圈金色
+		var upcoming = new HashSet<string>(NextStations(layout, StoryAtlas.CurrentMain), StringComparer.Ordinal);
 		foreach (var pair in layout.Points)
 		{
 			StoryMission m = StoryAtlas.Find(pair.Key);
@@ -466,6 +584,10 @@ public partial class StoryReviewPanel
 					Round(dot, new Color(Ink.r, Ink.g, Ink.b, alpha * (0.12f + 0.88f * m.Read.Value / 100f)), rr);
 				}
 				Round(dot, new Color(Ink.r, Ink.g, Ink.b, alpha), rr, Z(2));
+				if (upcoming.Contains(m.Key))
+				{
+					Round(new Rect(dot.x - Z(2), dot.y - Z(2), dot.width + Z(4), dot.height + Z(4)), new Color(Gold.r, Gold.g, Gold.b, alpha), rr + Z(2), Z(3));
+				}
 				if (_routePicked == m)
 				{
 					Round(new Rect(dot.x - Z(4), dot.y - Z(4), dot.width + Z(8), dot.height + Z(8)), Cinnabar, rr + Z(4), Z(2));
@@ -558,6 +680,7 @@ public partial class StoryReviewPanel
 		{
 			GUILayout.Label("<color=#A3302A><b>当前主线</b></color>", _label);
 		}
+		DrawNext(m);
 		if (GUILayout.Button("看剧情图", _primary, GUILayout.Height(S(38))))
 		{
 			OpenFlow(m);
@@ -570,24 +693,17 @@ public partial class StoryReviewPanel
 			GUILayout.Label("触发条件", _heading);
 			GUILayout.Label(OnPaper(conditions), _rich);
 		}
+		DrawStationOptions(m);
 		DrawSections(m);
 		DrawEntries(m);
 		var before = StoryAtlas.Missions.Where(x => x.Main && x.Next.Contains(m.Key)).ToList();
-		var after = m.Next.Select(StoryAtlas.Find).Where(x => x != null).ToList();
-		if (before.Count + after.Count > 0)
+		if (before.Count > 0)
 		{
 			GUILayout.Space(S(10));
-			GUILayout.Label("前后", _heading);
+			GUILayout.Label("从哪来", _heading);
 			foreach (StoryMission x in before)
 			{
 				if (GUILayout.Button("← " + x.Title, _button))
-				{
-					_routePicked = x;
-				}
-			}
-			foreach (StoryMission x in after)
-			{
-				if (GUILayout.Button("→ " + x.Title, _button))
 				{
 					_routePicked = x;
 				}
@@ -603,6 +719,155 @@ public partial class StoryReviewPanel
 				ReplayButton(node, StoryScripts.SegmentName(node.Script) + "　" + $"第{node.Year}年{node.Month}月", _button);
 			}
 		}
+	}
+
+	/// <summary>
+	/// 接下来：主线写接着的几站（剧本里明写的、按日期接上的都算，岔开的写触发条件）；支线写这条支线的下一步，最后一步写走完接回哪站主线。
+	/// 每项写什么时候、在哪、这一局走过没有，点一下换到那一站。
+	/// </summary>
+	private void DrawNext(StoryMission m)
+	{
+		var next = new List<(StoryMission To, string Why, bool Join)>();
+		if (m.Main)
+		{
+			foreach (string key in _route != null ? NextStations(_route, m.Key) : new List<string>())
+			{
+				StoryMission to = StoryAtlas.Find(key);
+				if (to != null && next.All(n => n.To != to))
+				{
+					next.Add((to, _route.EdgeLabels.TryGetValue((m.Key, key), out string label) ? label : "", false));
+				}
+			}
+			foreach (StoryMission to in m.Next.Select(StoryAtlas.Find).Where(x => x != null && next.All(n => n.To != x)))
+			{
+				next.Add((to, "", false));
+			}
+		}
+		else if (_route?.Side.FirstOrDefault(s => s.Missions.Contains(m)) is SideStory side)
+		{
+			var order = side.Missions.OrderBy(x => x.From ?? int.MaxValue).ToList();
+			int at = order.IndexOf(m);
+			if (at >= 0 && at + 1 < order.Count)
+			{
+				next.Add((order[at + 1], "", false));
+			}
+			else
+			{
+				next.AddRange(side.Joins.Select(j => (j, "", true)));
+			}
+		}
+		if (next.Count == 0)
+		{
+			return;
+		}
+		GUILayout.Space(S(10));
+		GUILayout.Label("接下来", _heading);
+		foreach (var (to, why, join) in next.Take(4))
+		{
+			GUILayout.BeginVertical(_card);
+			if (GUILayout.Button(join ? string.Format("走完接到主线「{0}」", to.Title) : "→ " + to.Title, new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, wordWrap = true }))
+			{
+				_routePicked = to;
+				_routeSide = null;
+				_routeDetailScroll = Vector2.zero;
+			}
+			GUILayout.Label(to.When + (to.Place.Length > 0 ? "　·　" + to.Place : "") + (to.Visited ? "　·　<color=#2F6B3A>✓ 这一局走过</color>" : ""), _rich);
+			if (why.Length > 0)
+			{
+				GUILayout.Label(OnPaper(why), _small);
+			}
+			GUILayout.EndVertical();
+		}
+		GUILayout.Space(S(6));
+	}
+
+	private readonly HashSet<string> _routeOptionsOpen = new HashSet<string>(StringComparer.Ordinal);
+
+	/// <summary>
+	/// 这一站的选项：默认折起来（免得详情太长、剧透太多），展开后按剧情段列出每个选项要什么条件、选了数值好感旗标怎么变，
+	/// 写法和「此刻」页、游戏里选项后面接的说明一样。
+	/// </summary>
+	private void DrawStationOptions(StoryMission m)
+	{
+		var options = m.Scripts.Select(StoryScripts.Get).Where(s => s != null)
+			.Select(s => (Script: s, Options: s.Menus.SelectMany(menu => menu).Where(st => st.Kind == StoryStep.Option).GroupBy(st => st.Key).Select(g => g.First()).ToList()))
+			.Where(x => x.Options.Count > 0).ToList();
+		int count = options.Sum(x => x.Options.Count);
+		if (count == 0)
+		{
+			return;
+		}
+		bool open = _routeOptionsOpen.Contains(m.Key);
+		GUILayout.Space(S(10));
+		if (GUILayout.Button((open ? "▼ " : "▶ ") + string.Format("这一站的选项（{0}）", count), new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft }))
+		{
+			if (!_routeOptionsOpen.Remove(m.Key))
+			{
+				_routeOptionsOpen.Add(m.Key);
+			}
+		}
+		if (!open)
+		{
+			return;
+		}
+		foreach (var (script, steps) in options)
+		{
+			if (options.Count > 1)
+			{
+				GUILayout.Label(StoryScripts.SegmentName(script.Name), _muted);
+			}
+			foreach (StoryStep step in steps.Take(40))
+			{
+				GUILayout.BeginVertical(_card);
+				GUILayout.Label(Cached((step, "option"), () => OnPaper(StoryScripts.Describe(step, TextConverter.ForDisplay))), _rich);
+				string effects = Cached((script, step.Key, "effects", PanelTheme.Dark), () => PanelDeltas(string.Join("　", script.Effects
+					.Where(e => e.Path.Any(st => st.Kind == StoryStep.Option && st.Key == step.Key) && !e.Text.Contains("暂存"))
+					.Select(e => e.Text).Distinct().ToArray())));
+				if (effects.Length > 0)
+				{
+					GUILayout.Label(effects, _muted);
+				}
+				GUILayout.EndVertical();
+			}
+			if (steps.Count > 40)
+			{
+				GUILayout.Label($"……共 {steps.Count} 个", _muted);
+			}
+		}
+	}
+
+	/// <summary>
+	/// 这一站接下来的站：先看连线；从这站出去没有连线的（剧本里没写下一站、靠日期接上的），按同一道上往后的第一站，
+	/// 再没有就按主线上往后的第一站。
+	/// </summary>
+	private static List<string> NextStations(RouteLayout layout, string key)
+	{
+		var next = layout.Edges.Where(e => e.From == key).Select(e => e.To).Distinct().ToList();
+		if (next.Count > 0 || key == null || !layout.Points.TryGetValue(key, out Vector2 at))
+		{
+			return next;
+		}
+		string after = layout.Points.Where(kv => Mathf.Abs(kv.Value.y - at.y) < 1f && kv.Value.x > at.x + 1f).OrderBy(kv => kv.Value.x).Select(kv => kv.Key).FirstOrDefault()
+			?? layout.Points.Where(kv => layout.Spine.Contains(kv.Key) && kv.Value.x > at.x + 1f).OrderBy(kv => kv.Value.x).Select(kv => kv.Key).FirstOrDefault();
+		if (after != null)
+		{
+			next.Add(after);
+		}
+		return next;
+	}
+
+	/// <summary>选中这一站并滚到它；图上没有这一站时返回 false。</summary>
+	private bool PickStation(StoryMission m, Rect r)
+	{
+		if (m == null || _route == null || !_route.Points.TryGetValue(m.Key, out Vector2 p))
+		{
+			return false;
+		}
+		_routePicked = m;
+		_routeSide = null;
+		_routeDetailScroll = Vector2.zero;
+		_routeScroll = new Vector2(Mathf.Max(0, p.x - r.width * 0.3f), Mathf.Max(0, p.y - r.height * 0.4f));
+		return true;
 	}
 
 	/// <summary>地图上方一行：九位可以结缘的人，点一位看她的结缘路线，再点一次取消。</summary>
@@ -780,11 +1045,14 @@ public partial class StoryReviewPanel
 			}
 		}
 		GUILayout.Label((side.Visited ? "<color=#2F6B3A>✓ 这一局走过</color>" : "这一局没走过") + (side.Read != null ? $"　·　对白读过 {side.Read}%" : ""), _label);
-		foreach (StoryMission m in side.Missions.OrderBy(m => m.From ?? int.MaxValue))
+		var order = side.Missions.OrderBy(m => m.From ?? int.MaxValue).ToList();
+		// 这一局还没走过的第一步标成「下一步」
+		StoryMission upcoming = order.FirstOrDefault(m => !m.Visited);
+		foreach (StoryMission m in order)
 		{
 			GUILayout.Space(S(8));
 			GUILayout.BeginVertical(_card);
-			GUILayout.Label(m.Title + (m.Visited ? "　<color=#2F6B3A>✓ 走过</color>" : ""), _label);
+			GUILayout.Label(m.Title + (m.Visited ? "　<color=#2F6B3A>✓ 走过</color>" : m == upcoming ? "　<color=#A3302A>下一步</color>" : ""), _label);
 			GUILayout.Label(m.When + (m.Place.Length > 0 ? "　·　" + m.Place : "") + (m.Read != null ? $"　·　读过 {m.Read}%" : ""), _muted);
 			string conditions = StoryAtlas.ConditionText(m);
 			if (conditions.Length > 0)
