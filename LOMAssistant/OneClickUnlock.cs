@@ -305,7 +305,8 @@ internal static class ConditionSolver
 			{
 				int baseValue = w.Value - stat.AdditionValue;
 				if (baseValue < stat.Min || baseValue > stat.Max) return false;
-				stat.SetValue(baseValue);
+				// 一键设置、选分支改数值都是玩家自己点的：数值页锁住的数值也照样改（锁只拦游戏自己的变化）
+				LOMAssistant.Features.Extras.MoodLockPatch.Manual(() => stat.SetValue(baseValue));
 				return stat.FinalValue == w.Value;
 			}
 			case RelationshipStat relation:
