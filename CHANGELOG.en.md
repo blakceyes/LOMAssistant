@@ -2,6 +2,12 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.3.2 (2026-10-31)
+
+- **Pick the branch before a check**: fixed the picker being covered by the black screen when it stops at the start of a scene or before a fade-in, so it could neither be seen nor used. When the same check comes up several times in one scene, it now follows your first pick instead of asking again.
+- **Save anywhere**: fixed save-anywhere saves made after loading an older save failing to load later (execution record mismatch); such saves already made now load too.
+- **Save-anywhere tab**: the list can be grouped by save slot, save time or game date, and keeps the order you picked.
+
 ## 3.3.1 (2026-10-31)
 
 - **Search**: search boxes in the story review take pinyin initials; in the Korean UI you can type initial consonants, and in the English UI the first letters of the words.
