@@ -83,6 +83,14 @@ public class EventPicker : MonoBehaviour
 	private static string _switch;
 	/// <summary>正在问的是「判断前选走哪一支」（不带随机值的分支判断），Choice.Forced 是第几支。</summary>
 	private static bool _branchMode;
+	/// <summary>
+	/// 这段剧本里已经选过的判断（判断名 → 第几支，0 是按游戏判断）。同一个判断在一段剧本里常出现好几次（开场按它摆立绘、后面按它接对白），
+	/// 第一次选了哪支，后面几次照着走，不再问，免得两次选得不一样、立绘和对白对不上。换剧本、换场景作废。
+	/// </summary>
+	private static readonly Dictionary<string, int> Picked = new Dictionary<string, int>(System.StringComparer.Ordinal);
+	/// <summary>等选的时候 Fungus 的黑屏改由这里画（见 DrawFade）。</summary>
+	internal static Fungus.CameraManager Fade;
+	private static bool _drawErrorLogged;
 
 	private float _scale = -1f;
 	private int _fontMode = -1;
@@ -110,6 +118,7 @@ public class EventPicker : MonoBehaviour
 		_switch = null;
 		_branchMode = false;
 		Choices.Clear();
+		Picked.Clear();
 		Pending = null;
 		_pendingUnmet = false;
 		SwitchRandom.Pending = null;
@@ -136,6 +145,7 @@ public class EventPicker : MonoBehaviour
 	/// <summary>新剧本开始执行：上一段剧本里没选完的作废。</summary>
 	public static void ScriptLoaded()
 	{
+		Picked.Clear();
 		if (_state != State.Idle)
 		{
 			_state = State.Idle;
@@ -302,6 +312,15 @@ public class EventPicker : MonoBehaviour
 	// 判断前选走哪一支：每一支写成「第几支　会走这一支　看过没」，下面一行是条件（满不满足、现在的值）和接到哪里
 	private static bool WaitBranch(string name, string script, string pool)
 	{
+		if (Picked.TryGetValue(name, out int picked))
+		{
+			if (picked > 0)
+			{
+				BranchOverride.Set(name, picked);
+			}
+			FileLogger.Log("[分支] " + name + "：这段剧本里选过，" + (picked > 0 ? "照样走第 " + picked + " 支" : "照样按游戏判断"));
+			return false;
+		}
 		List<BranchPicker.Arm> arms = BranchPicker.Arms(name, script, out int predicted);
 		if (arms == null || !BranchPicker.Worth(arms, predicted))
 		{
@@ -350,6 +369,7 @@ public class EventPicker : MonoBehaviour
 			{
 				BranchOverride.Set(_switch, choice.Forced);
 			}
+			Picked[_switch] = choice?.Forced ?? 0;
 			FileLogger.Log("[分支] " + _switch + "：" + (choice == null ? "按游戏判断" : "走第 " + choice.Forced + " 支"));
 		}
 		else if (_switch != null)
@@ -514,11 +534,18 @@ public class EventPicker : MonoBehaviour
 		{
 			return;
 		}
-		// 剧情的黑屏淡入淡出是 Fungus 在 GUI.depth -1000 画的一整张黑图：判断常在淡入前，窗口要画在它上面，不然被黑屏盖住像卡死
+		// 剧情的黑屏淡入淡出是 Fungus 在 OnGUI 里画的一整张黑图：判断常在淡入前，窗口要画在它上面，不然被黑屏盖住像卡死。
+		// IMGUI 的窗口比普通绘制先上屏，GUI.depth 排在前面也照样被这张图盖住；等选的时候 Fungus 不画，
+		// 黑屏改成选择框后面的一个整屏窗口，窗口之间按前后顺序画，选择框一定在它上面
 		GUI.depth = -2000;
 		if (ModFont.NeedsRebuild(scale, _scale, _fontMode) || _dark != PanelTheme.Dark || _opacity != PanelTheme.DialogOpacity)
 		{
 			BuildStyles(scale);
+		}
+		if (Fade != null && Fade.GetFieldValue<float>("fadeAlpha") > 0f)
+		{
+			GUI.Window(584130, new Rect(0f, 0f, Screen.width, Screen.height), DrawFade, GUIContent.none, GUIStyle.none);
+			GUI.BringWindowToBack(584130);
 		}
 		string layout = _pool + "|" + Choices.Count;
 		if (layout != _lastLayout && Event.current.type == EventType.Layout)
@@ -528,10 +555,30 @@ public class EventPicker : MonoBehaviour
 			_scroll = Vector2.zero;
 		}
 		_windowRect = GUILayout.Window(584131, _windowRect, DrawWindow, "", _window);
+		GUI.BringWindowToFront(584131);
 		// 选事件时游戏停着等，窗口拖不出屏幕：左右整个留在屏幕里，上下至少露出 40 像素
 		_windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width));
 		_windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - 40f * scale));
 		InputGuard.Report("EventPicker", _windowRect);
+	}
+
+	// Fungus 那张黑图照它现在的透明度画满屏（它自己的 OnGUI 在等选时跳过，见 EventPickerPatch.CameraManager_OnGUI_Prefix）
+	private static void DrawFade(int id)
+	{
+		if (Fade == null || Event.current.type != EventType.Repaint)
+		{
+			return;
+		}
+		float alpha = Fade.GetFieldValue<float>("fadeAlpha");
+		Texture2D texture = Fade.GetFieldValue<Texture2D>("screenFadeTexture");
+		if (alpha <= 0f || texture == null)
+		{
+			return;
+		}
+		Color color = GUI.color;
+		GUI.color = new Color(1f, 1f, 1f, alpha);
+		GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), texture);
+		GUI.color = color;
 	}
 
 	private static string Label(int i, int total)
@@ -559,6 +606,15 @@ public class EventPicker : MonoBehaviour
 		try
 		{
 			DrawChoices();
+		}
+		catch (System.Exception ex) when (!(ex is ExitGUIException))
+		{
+			// 画不出来时窗口是空的，玩家只看到黑屏：记一次日志，好查是哪里出错
+			if (!_drawErrorLogged)
+			{
+				_drawErrorLogged = true;
+				FileLogger.LogWarning("[事件自选] 选择框画不出来: " + ex);
+			}
 		}
 		finally
 		{
@@ -700,6 +756,16 @@ public class EventPicker : MonoBehaviour
 
 internal static class EventPickerPatch
 {
+	// 等选的时候 Fungus 不自己画黑屏，交给选择框画在窗口下面
+	[HarmonyPrefix]
+	[HarmonyPatch(typeof(Fungus.CameraManager), "OnGUI")]
+	public static bool CameraManager_OnGUI_Prefix(Fungus.CameraManager __instance)
+	{
+		// 平时也记下来：刚停下的那一帧选择框可能比它先画，要已经知道黑屏画成什么样
+		EventPicker.Fade = __instance;
+		return !EventPicker.IsWaiting;
+	}
+
 	// 在信息窗口解析之后、随时存档包装之前；开了随时存档时由它在包装前调用 Instrument，这里跳过
 	[HarmonyPrefix]
 	[HarmonyPriority(Priority.LowerThanNormal)]
