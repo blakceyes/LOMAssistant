@@ -66,8 +66,8 @@ public static class DataHelper
 						string devNote = fieldValue2.DevNote;
 						if (!string.IsNullOrEmpty(devNote))
 						{
-							// 第一行末尾的 \r 也去掉，见 GetFlagName
-							return TextConverter.ToSimplified(devNote.Split('\n')[0].TrimEnd('\r')) + " (" + text + ")";
+							// 第一行首尾的空白也去掉，见 GetFlagName
+							return TextConverter.ToSimplified(devNote.Split('\n')[0].Trim()) + " (" + text + ")";
 						}
 					}
 				}
@@ -544,8 +544,9 @@ public static class DataHelper
 		{
 			return string.Empty;
 		}
-		// 备注有的是 Windows 换行（\r\n），第一行末尾会留着 \r：TextMeshPro 遇到 \r 回到行首，后面的字叠在前面的字上（骰子菜单的结果说明）
-		string text = flagData.DevNote.Split('\n')[0].TrimEnd('\r');
+		// 备注有的是 Windows 换行（\r\n），第一行末尾会留着 \r：TextMeshPro 遇到 \r 回到行首，后面的字叠在前面的字上（骰子菜单的结果说明）；
+		// 有的末尾带制表符，名字和数值之间空出一大截。首尾空白都去掉
+		string text = flagData.DevNote.Split('\n')[0].Trim();
 		if (!string.IsNullOrEmpty(text))
 		{
 			return TextConverter.ToSimplified(text);
