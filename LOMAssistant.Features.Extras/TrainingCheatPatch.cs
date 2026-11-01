@@ -23,8 +23,87 @@ public static class TrainingCheatPatch
 	{
 		if (ConfigManager.CheatUnlimitedTraining.Value)
 		{
-			__result = NoCost(__result, __instance, "_martialPoint");
+			__result = NoCost(__result, __instance, "_martialPoint", TakeHeld());
 		}
+	}
+
+	// ---- 「下一级」：游戏按本级还差的点数投，但不超过手上的点数和剩余次数，差一点就要点两下。
+	// 开着无限时点数、次数本来就不扣，算之前先补够，投完换回补之前的值 ----
+
+	/// <summary>补之前的点数（基础值）和次数；投点协程开始时取走，投完换回这个值。</summary>
+	private static (int Value, int Count)? _held;
+
+	[HarmonyPrefix]
+	[HarmonyPatch(typeof(MartialPanel), "HandleLearnNextItem")]
+	public static void MartialNext_Prefix(MartialPanel __instance)
+	{
+		if (ConfigManager.CheatUnlimitedTraining.Value)
+		{
+			var tr = Traverse.Create(__instance);
+			Hold(tr, "_martialPoint", tr.Field("_currentItem").Property("Book").GetValue<Book>()?.GetNextLevelRequirePoints() ?? 0);
+		}
+	}
+
+	[HarmonyPrefix]
+	[HarmonyPatch(typeof(UpgradePanel), "HandleUpgradeNextItem")]
+	public static void UpgradeNext_Prefix(UpgradePanel __instance)
+	{
+		if (ConfigManager.CheatUnlimitedUpgrade.Value)
+		{
+			var tr = Traverse.Create(__instance);
+			Hold(tr, "_pointData", tr.Field("_currentSelectedItem").Property("Data").GetValue<UpgradeItemData>()?.GetNextLevelRequirePoints() ?? 0);
+		}
+	}
+
+	// 投点协程没被取走补的值时（游戏没开始投），这里换回去
+	[HarmonyFinalizer]
+	[HarmonyPatch(typeof(MartialPanel), "HandleLearnNextItem")]
+	public static void MartialNext_Finalizer(MartialPanel __instance) => Release(__instance, "_martialPoint");
+
+	[HarmonyFinalizer]
+	[HarmonyPatch(typeof(UpgradePanel), "HandleUpgradeNextItem")]
+	public static void UpgradeNext_Finalizer(UpgradePanel __instance) => Release(__instance, "_pointData");
+
+	private static void Hold(Traverse tr, string pointField, int need)
+	{
+		GameStat point = tr.Field(pointField).GetValue<GameStat>();
+		int count = tr.Field("_currentCount").GetValue<int>();
+		if (point == null || need <= 0)
+		{
+			return;
+		}
+		_held = (ValueField(point), count);
+		if (point.FinalValue < need)
+		{
+			ValueField(point) += need - point.FinalValue;
+		}
+		if (count < need)
+		{
+			tr.Field("_currentCount").SetValue(need);
+		}
+	}
+
+	private static (int Value, int Count)? TakeHeld()
+	{
+		var held = _held;
+		_held = null;
+		return held;
+	}
+
+	private static void Release(object panel, string pointField)
+	{
+		var held = TakeHeld();
+		if (held == null)
+		{
+			return;
+		}
+		var tr = Traverse.Create(panel);
+		GameStat point = tr.Field(pointField).GetValue<GameStat>();
+		if (point != null)
+		{
+			ValueField(point) = held.Value.Value;
+		}
+		tr.Field("_currentCount").SetValue(held.Value.Count);
 	}
 
 	// ---- 锻造 / 炼丹（UpgradePanel）：同样在 StartHandleUpgarde 开头扣点数和次数（银两由下面的开关管） ----
@@ -35,7 +114,7 @@ public static class TrainingCheatPatch
 	{
 		if (ConfigManager.CheatUnlimitedUpgrade.Value)
 		{
-			__result = NoCost(__result, __instance, "_pointData");
+			__result = NoCost(__result, __instance, "_pointData", TakeHeld());
 		}
 	}
 
@@ -61,13 +140,13 @@ public static class TrainingCheatPatch
 		}
 	}
 
-	/// <summary>原协程第一步扣点数和次数：记下扣之前的值，第一步走完换回去，后面的动画照常。</summary>
-	private static IEnumerator NoCost(IEnumerator inner, object panel, string pointField)
+	/// <summary>原协程第一步扣点数和次数：记下扣之前的值（「下一级」补过的按补之前的），第一步走完换回去，后面的动画照常。</summary>
+	private static IEnumerator NoCost(IEnumerator inner, object panel, string pointField, (int Value, int Count)? held)
 	{
 		var tr = Traverse.Create(panel);
 		GameStat point = tr.Field(pointField).GetValue<GameStat>();
-		int value = point != null ? ValueField(point) : 0;
-		int count = tr.Field("_currentCount").GetValue<int>();
+		int value = held?.Value ?? (point != null ? ValueField(point) : 0);
+		int count = held?.Count ?? tr.Field("_currentCount").GetValue<int>();
 		bool first = true;
 		while (inner.MoveNext())
 		{
