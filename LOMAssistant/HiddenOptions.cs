@@ -74,10 +74,9 @@ internal static class HiddenOptions
 				return;
 			}
 			Forced.Clear();
-			// 读随时存档回放时按存档时开没开改写，不看现在的设置：改写多出来的查询要和执行记录一一对上
+			// 开着随时存档时按这段执行记录开头定下的改写（读档回放按存档），不看现在的设置：改写多出来的查询要和执行记录一一对上
 			var anytime = LOMAssistant.Features.AnytimeSave.AnytimeSave.Instance;
-			bool on = anytime != null && (LOMAssistant.Features.AnytimeSave.AnytimeSave.Restoring || LOMAssistant.Features.AnytimeSave.AnytimeSave.Replaying)
-				? anytime.LoadingHiddenOptions : ConfigManager.ForceUnmetOptions.Value;
+			bool on = anytime != null ? anytime.HiddenOptionsFor(__instance) : ConfigManager.ForceUnmetOptions.Value;
 			if (!on || !luaString.Contains("\"~x\""))
 			{
 				return;

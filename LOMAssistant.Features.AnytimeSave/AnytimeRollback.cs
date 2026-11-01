@@ -98,7 +98,7 @@ public partial class AnytimeSave
 				music = CurrentSound("_currentMusic"), envSound = CurrentSound("_currentEnvSound"), musicVolume = CurrentVolume("BackgroundMusic"), envVolume = CurrentVolume("EnvSound"),
 				visibleCharacters = VisibleCharacters(),
 				dice = new DiceState(),
-				hiddenOptions = LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value
+				hiddenOptions = runHidden
 			};
 		}
 		catch (System.Exception e)

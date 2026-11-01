@@ -48,7 +48,7 @@ public class SaveFile
 	public List<ScriptStamp> scripts = new List<ScriptStamp>();
 	public DiceState dice;
 	public FreeRng freeRng;
-	/// <summary>存档时开着「强行选条件没满足的选项」：剧本里带条件的选项改写过（见 HiddenOptions），回放时要照样改写，执行记录才对得上。以前的存档没有，是 false。</summary>
+	/// <summary>这段记录跑的时候剧本里带条件的选项改写过（见 HiddenOptions），回放时要照样改写，执行记录才对得上。以前的存档没有，是 false。</summary>
 	public bool hiddenOptions;
 }
 [Serializable] public class Envelope { public string sha256, payload; }
@@ -79,6 +79,19 @@ public partial class AnytimeSave : MonoBehaviour
 
 	/// <summary>正在读的随时存档存的时候开着「强行选条件没满足的选项」。</summary>
 	internal bool LoadingHiddenOptions => loading != null && loading.hiddenOptions;
+
+	/// <summary>
+	/// 这段剧情的执行记录是不是按改写过的剧本跑的。一段记录开头定一次（新开一段按设置，读随时存档按存档），
+	/// 中途改设置到下一段才生效：同一段记录里有的剧本改写、有的没改写，读档回放时就对不上。存档、回退点都记这个。
+	/// </summary>
+	private bool runHidden;
+
+	/// <summary>这个剧本加载时要不要改写带条件的选项（HiddenOptions 在本类包装剧本之前问）。</summary>
+	internal bool HiddenOptionsFor(LuaEnvironment env)
+	{
+		if (Restoring || Replaying) return LoadingHiddenOptions;
+		return env.Interpreter != currentInterpreter ? LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value : runHidden;
+	}
 
 	private static readonly MethodInfo ApplyData = AccessTools.Method(typeof(SaveSystem), "ExecuteLoadGameData");
 	private static readonly HashSet<string> Queries = new HashSet<string> {
@@ -209,6 +222,7 @@ public partial class AnytimeSave : MonoBehaviour
 		{
 			currentInterpreter = env.Interpreter;
 			if (!Restoring) { trace.Clear(); stamps.Clear(); rootScript = null; active = -1; Faulted = false; ClearRollback(); }
+			runHidden = Restoring ? LoadingHiddenOptions : LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value;
 		}
 		if (string.IsNullOrEmpty(rootScript)) rootScript = shortName;
 		var stamp = stamps.Find(x => x.name == name);
@@ -419,7 +433,7 @@ public partial class AnytimeSave : MonoBehaviour
 				visibleCharacters = VisibleCharacters(),
 				target = active, preview = Preview(), gameTime = GameTimeText(),
 				dice = CaptureDice(),
-				hiddenOptions = LOMAssistant.Config.ConfigManager.ForceUnmetOptions.Value,
+				hiddenOptions = runHidden,
 				freeRng = SceneName == "Free" ? CaptureFreeRng() : null,
 				trace = SceneName == "Story" ? trace.Take(active + 1).ToList() : new List<Entry>(),
 				scripts = new List<ScriptStamp>(stamps)
@@ -524,6 +538,9 @@ public partial class AnytimeSave : MonoBehaviour
 			Notice("这个随时存档经过的剧本 " + changed + " 被游戏更新改过了，读不了。请读普通存档，再重新存随时存档。", 12);
 			return;
 		}
+		// 以前按存档那一刻的设置记「改写过」，读了没改写的旧档接着玩再存，就记错成改写过。记录里一次都没问过要不要放回选项时，
+		// 改写和不改写回放出来的查询一模一样，按没改写读
+		if (data.hiddenOptions && !(data.trace?.Any(e => e.kind == "query" && e.label == "lomhidden") ?? false)) data.hiddenOptions = false;
 		loading = data;
 		SetPanel(false); pendingLoad = true;
 		LOMAssistant.Features.Story.StoryReviewPanel.Hide();
