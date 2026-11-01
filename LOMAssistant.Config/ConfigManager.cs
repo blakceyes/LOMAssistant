@@ -67,6 +67,7 @@ public static class ConfigManager
 
 	public static ConfigElement<bool> ForceUnmetOptions;
 	public static ConfigElement<bool> EnableMapHints;
+	public static ConfigElement<bool> DeadlineReminder;
 	public static ConfigElement<bool> ShowItemUses;
 	public static ConfigElement<bool> MapHintsNowOnly;
 
@@ -198,13 +199,14 @@ public static class ConfigManager
 	public static void Init()
 	{
 		// 配置文件已经有了、却还没有选预设弹窗这一项：是从 2.x 更新上来的老玩家，不弹
-		bool updated = false;
+		bool updated = false, noDeadline = false;
 		try
 		{
 			if (System.IO.File.Exists(Config.ConfigFilePath))
 			{
 				string raw = System.IO.File.ReadAllText(Config.ConfigFilePath);
 				updated = !raw.Contains("PresetChooserShown");
+				noDeadline = !raw.Contains("DeadlineReminder");
 				// An old true/false fails to parse as int and would fall back to 2 (unlock all).
 				// 旧的 true/false 读不成数字会变成默认的 2（全部解锁），先改写
 				string migrated = raw.Replace("EnableLibraryDisplay = true", "EnableLibraryDisplay = 2")
@@ -224,6 +226,11 @@ public static class ConfigManager
 		if (updated)
 		{
 			PresetChooserShown.Value = true;
+		}
+		// 限时剧情提醒是新加的，默认开；用着「原汁原味」（关着选项提示）的老玩家更新上来保持关
+		if (noDeadline && !EnableOptionInfo.Value)
+		{
+			DeadlineReminder.Value = false;
 		}
 		MigrateStoryReviewKey();
 		MigrateHideUIKey();
@@ -416,6 +423,7 @@ public static class ConfigManager
 		ActionMode = new ConfigElement<int>("ActionMode", "养成行动点：0=正常，1=不消耗（扣到剩 1 点后不再扣，可一直行动；用「空过」结束本旬），2=每旬固定 N 点（N 见 ActionsPerRound）", 0);
 		ActionsPerRound = new ConfigElement<int>("ActionsPerRound", "行动点选「每旬N点」时，每旬固定几点（1～5，原版每旬 3 点）。有的选项要「剩余行动点大于 2」才出现，设成 3 点以上就能在旬初触发", 1);
 		ShowFlagChanges = new ConfigElement<bool>("ShowFlagChanges", "剧情改动旗标时在屏幕上提示（可能剧透）。true=开，false=关", defaultValue: false);
+		DeadlineReminder = new ConfigElement<bool>("DeadlineReminder", "限时剧情提醒：条件已经满足、还没触发的剧情，离触发时间结束只剩 3 旬以内时，在养成地图左上角列出还剩几旬、去哪里触发；「此刻」页的任务也标出来。true=开（默认，辅助及以上的预设打开），false=关", defaultValue: true);
 		EnableMapHints = new ConfigElement<bool>("EnableMapHints", "养成地图事件提示：鼠标停在建筑上列出这里的主线、支线、随机事件和触发条件；有现在就能触发、这一局还没走过的主线或支线的建筑一直亮着。true=开，false=关", defaultValue: true);
 		ShowItemUses = new ConfigElement<bool>("ShowItemUses", "物品用途：背包里选中贵重品、杂物、书，或在商店里看商品时，说明后面列出哪些剧情会判定要不要有它、会把它收走（可能剧透任务名）。true=开，false=关", defaultValue: false);
 		MapHintsNowOnly = new ConfigElement<bool>("MapHintsNowOnly", "地图建筑事件提示只列现在点进去就会触发的主线、支线，时间不对、条件不满足的只写个数；随机事件本来就只列现在能抽到的。true=开，false=关", defaultValue: false);

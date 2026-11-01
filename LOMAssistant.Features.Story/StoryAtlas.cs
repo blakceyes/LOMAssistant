@@ -705,7 +705,7 @@ public static class StoryAtlas
 	}
 
 	// GameTime 重载了 ==，和 null 比会抛异常，只能用 ReferenceEquals
-	private static int? Rounds(GameTime t) => ReferenceEquals(t, null) || t.Year <= 0 ? (int?)null : (t.Year - 1) * 36 + (t.Month - 1) * 3 + ((int)t.Stage - 1);
+	internal static int? Rounds(GameTime t) => ReferenceEquals(t, null) || t.Year <= 0 ? (int?)null : (t.Year - 1) * 36 + (t.Month - 1) * 3 + ((int)t.Stage - 1);
 
 	public static string DateText(GameTime t) => ReferenceEquals(t, null) || t.Year <= 0 ? "时间不定" : $"第{t.Year}年{t.Month}月{StageText((int)t.Stage)}";
 

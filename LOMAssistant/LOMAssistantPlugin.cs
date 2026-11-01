@@ -106,6 +106,8 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 	{
 		try
 		{
+			// 记下现在的剧本和选项菜单：「此刻」页等要用，关掉选项提示也照样记
+			TryPatchAll(typeof(OptionTracking));
 			if (ConfigManager.EnableOptionInfo.Value)
 			{
 				TryPatchAll(typeof(OptionInfoPatch));
@@ -194,6 +196,7 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			UiHider.Ensure(base.gameObject);
 			SkipReadToggle.Ensure(base.gameObject);
 			MapEventHints.Ensure(base.gameObject);
+			LOMAssistant.Features.Story.DeadlineReminder.Ensure(base.gameObject);
 			LOMAssistant.Features.Story.StoryJumpNote.Ensure(base.gameObject);
 			PositionOptionHints.Ensure(base.gameObject);
 			TryPatchAll(typeof(MapEventHints));

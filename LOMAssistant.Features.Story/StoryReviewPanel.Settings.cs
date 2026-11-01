@@ -125,6 +125,7 @@ public partial class StoryReviewPanel
 				Row(ConfigManager.EnableSkipAction, "养成「空过」按钮"),
 				Row(ConfigManager.EnableMapHints, "地图建筑事件提示"),
 				Row(ConfigManager.MapHintsNowOnly, "地图提示只列能触发的"),
+				Row(ConfigManager.DeadlineReminder, "限时剧情提醒"),
 			}),
 			("战斗", new List<SettingRow>
 			{
