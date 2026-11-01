@@ -27,6 +27,8 @@ public partial class StoryReviewPanel
 	{
 		public string Title = "", Desc = "", Place = "";
 		public bool Ready, Main;
+		/// <summary>离触发时间结束还剩几旬（限时剧情提醒用）；不限时间的为 null。</summary>
+		public int? Left;
 	}
 
 	private sealed class NowSnapshot
@@ -162,7 +164,10 @@ public partial class StoryReviewPanel
 			foreach (NowMission m in _now.Missions)
 			{
 				GUILayout.BeginVertical(_card);
-				GUILayout.Label((m.Main ? "<color=#A3302A><b>主线</b></color>　" : "") + m.Title + "　" + (m.Ready ? "<color=#2F6B3A>条件已满足" + (m.Place.Length > 0 ? "，去「" + m.Place + "」就会触发" : "") + "</color>" : "<color=#73644F>还差条件</color>"), _rich);
+				// 限时剧情提醒开着时，条件已满足、快过期的标出还剩几旬
+				string left = m.Ready && m.Left <= DeadlineReminder.Ahead && LOMAssistant.Config.ConfigManager.DeadlineReminder.Value
+					? "　<color=#A3302A>" + (m.Left == 0 ? "这一旬是最后机会" : "还剩 " + m.Left + " 旬") + "</color>" : "";
+				GUILayout.Label((m.Main ? "<color=#A3302A><b>主线</b></color>　" : "") + m.Title + "　" + (m.Ready ? "<color=#2F6B3A>条件已满足" + (m.Place.Length > 0 ? "，去「" + m.Place + "」就会触发" : "") + "</color>" : "<color=#73644F>还差条件</color>") + left, _rich);
 				if (m.Desc.Length > 0)
 				{
 					GUILayout.Label(m.Desc, _rich);
@@ -228,7 +233,12 @@ public partial class StoryReviewPanel
 				foreach (KeyValuePair<string, List<LuaParse.Action>> option in LuaParser.Instance.ExtractOptionActionsFromLua(now.Script))
 				{
 					string text = RichText.Strip(StoryScripts.OptionText(option.Key)).Trim();
-					string result = RichText.Strip(TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(option.Value))).Trim();
+					// 和游戏里选项后面接的说明一样（被锁的写解锁条件、满足条件就接剧情的写「若……：触发剧情」）；取不到再只写选了会怎样
+					string result = RichText.Strip(OptionInfoPatch.OptionNote(option.Key)).Trim();
+					if (result.Length == 0)
+					{
+						result = RichText.Strip(TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(option.Value))).Trim();
+					}
 					// 选项文字里已经被选项提示接上了「(结果)」，去掉，结果单独写在下面
 					if (result.Length > 0 && text.EndsWith(result + ")"))
 					{
@@ -280,7 +290,8 @@ public partial class StoryReviewPanel
 					Title = TextConverter.ToSimplified(mainTitle.Replace("\n", " ")),
 					Desc = OnPaper(TextConverter.ToSimplified(mainDesc).Trim()),
 					Place = place == "無" ? "" : place,
-					Ready = missions != null && missions.MainMissionStart && missions.MainCheckData == main && !string.IsNullOrEmpty(main.StartScript)
+					Ready = missions != null && missions.MainMissionStart && missions.MainCheckData == main && !string.IsNullOrEmpty(main.StartScript),
+					Left = DeadlineReminder.Left(main)
 				});
 			}
 			var active = missions?.ActiveSubMissions;
@@ -299,7 +310,8 @@ public partial class StoryReviewPanel
 					Title = TextConverter.ToSimplified(pair.Value.Item1.Replace("\n", " ")),
 					Desc = OnPaper(TextConverter.ToSimplified(pair.Value.Item2).Trim()),
 					Place = place == "無" ? "" : place,
-					Ready = active != null && active.Values.Contains(check) && !string.IsNullOrEmpty(check.StartScript)
+					Ready = active != null && active.Values.Contains(check) && !string.IsNullOrEmpty(check.StartScript),
+					Left = DeadlineReminder.Left(check)
 				});
 			}
 			// 主线在最前，其余条件满足的在前；OrderBy 是稳定排序，同组保持游戏里的顺序

@@ -16,26 +16,15 @@ using UnityEngine.UI;
 
 namespace LOMAssistant;
 
-internal static class OptionInfoPatch
+/// <summary>
+/// 记下现在演的剧本和弹出的选项菜单，并解析剧本里的选项结果、判定、锁住的选项。
+/// 「此刻」页、AI 陪玩等要用，不管开没开「选项提示」都要打（只有在选项上显示结果的部分跟着开关）。
+/// </summary>
+internal static class OptionTracking
 {
-	private static string _originalDialogKey = string.Empty;
-
-	private static PositionController _positionCtrl = null;
-
-	/// <summary>最近载入的剧本（解析缓存的键），剧情回顾「此刻」页用它取这一段的选项、判定和事件。</summary>
-	public static string LastScriptKey;
-
-	/// <summary>
-	/// 游戏里最近一次弹出的选项菜单是哪几个选项（选项编号）。剧本的 choose 先取选项文字（GetStoryText）再加按钮（AddOption），
-	/// 加按钮时传的就是取到的那段文字：取文字时记下「文字 → 编号」，加按钮时按文字查回编号（中间还会取别的文字，不能按顺序对）。
-	/// 「此刻」页据此标出现在这一组。
-	/// </summary>
-	public static readonly List<string> MenuKeys = new List<string>();
-	private static readonly Dictionary<string, string> _textKeys = new Dictionary<string, string>();
+	/// <summary>取过的文字是哪个编号，加按钮时按文字查回编号（选项提示也用）。</summary>
+	internal static readonly Dictionary<string, string> TextKeys = new Dictionary<string, string>();
 	private static int _menuFrame = -1;
-
-	/// <summary>为真时取选项文字不经过下面的结果说明（本 Mod 自己取原文用）。</summary>
-	public static bool Raw;
 
 	/// <summary>掷骰转盘下面那几行：选项表每项是「选项编号|范围」，开始掷骰时记下这一组。</summary>
 	[HarmonyPrefix]
@@ -46,12 +35,12 @@ internal static class OptionInfoPatch
 		{
 			return;
 		}
-		MenuKeys.Clear();
+		OptionInfoPatch.MenuKeys.Clear();
 		foreach (string entry in __0)
 		{
 			if (!string.IsNullOrEmpty(entry))
 			{
-				MenuKeys.Add(entry.Split('|')[0]);
+				OptionInfoPatch.MenuKeys.Add(entry.Split('|')[0]);
 			}
 		}
 		_menuFrame = Time.frameCount;
@@ -63,12 +52,19 @@ internal static class OptionInfoPatch
 	{
 		if (Time.frameCount != _menuFrame)
 		{
-			MenuKeys.Clear();
+			OptionInfoPatch.MenuKeys.Clear();
 			_menuFrame = Time.frameCount;
 		}
-		if (__0 != null && _textKeys.TryGetValue(__0, out string key))
+		if (__0 != null && TextKeys.TryGetValue(__0, out string key))
 		{
-			MenuKeys.Add(key);
+			OptionInfoPatch.MenuKeys.Add(key);
+			return;
+		}
+		// 行动菜单（休息、闲聊、事件……）、地点菜单传的是选项编号（「talk+O_xxx+0+0」这类），按钮自己取文字：编号就在里面
+		string code = LOMAssistant.Features.Story.StoryScripts.OptionKey(__0, out string _);
+		if (code.StartsWith("O_"))
+		{
+			OptionInfoPatch.MenuKeys.Add(code);
 		}
 	}
 
@@ -78,15 +74,15 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(LeanLocalizationResolver), "GetStoryText")]
 	public static void LeanLocalizationResolver_GetStoryText_Remember(string key, string __result)
 	{
-		if (Raw || __result == null)
+		if (OptionInfoPatch.Raw || __result == null)
 		{
 			return;
 		}
-		if (_textKeys.Count > 500)
+		if (TextKeys.Count > 500)
 		{
-			_textKeys.Clear();
+			TextKeys.Clear();
 		}
-		_textKeys[__result] = key;
+		TextKeys[__result] = key;
 	}
 
 	[HarmonyPrefix]
@@ -116,7 +112,7 @@ internal static class OptionInfoPatch
 			LuaParser.Instance.ExtractPositionWorkFromLua(key, luaString);
 			if (!friendlyName.StartsWith("tmp.") && !friendlyName.StartsWith("Flowchart.Say.ExecuteLua"))
 			{
-				LastScriptKey = key;
+				OptionInfoPatch.LastScriptKey = key;
 			}
 			Lap("选项");
 			LuaParser.Instance.ExtractLockedOptions(key, luaString);
@@ -132,6 +128,26 @@ internal static class OptionInfoPatch
 		}
 		LuaLoadTiming.ParseMs += timer.ElapsedMilliseconds;
 	}
+}
+
+internal static class OptionInfoPatch
+{
+	private static string _originalDialogKey = string.Empty;
+
+	private static PositionController _positionCtrl = null;
+
+	/// <summary>最近载入的剧本（解析缓存的键），剧情回顾「此刻」页用它取这一段的选项、判定和事件。</summary>
+	public static string LastScriptKey;
+
+	/// <summary>
+	/// 游戏里最近一次弹出的选项菜单是哪几个选项（选项编号）。剧本的 choose 先取选项文字（GetStoryText）再加按钮（AddOption），
+	/// 加按钮时传的就是取到的那段文字：取文字时记下「文字 → 编号」，加按钮时按文字查回编号（中间还会取别的文字，不能按顺序对）。
+	/// 「此刻」页据此标出现在这一组。
+	/// </summary>
+	public static readonly List<string> MenuKeys = new List<string>();
+
+	/// <summary>为真时取选项文字不经过下面的结果说明（本 Mod 自己取原文用）。</summary>
+	public static bool Raw;
 
 	[HarmonyPostfix]
 	[HarmonyPatch(typeof(LeanLocalizationResolver), "GetStoryText")]
@@ -253,7 +269,7 @@ internal static class OptionInfoPatch
 		{
 			return;
 		}
-		string key = text != null && _textKeys.TryGetValue(text, out string k) ? k : null;
+		string key = text != null && OptionTracking.TextKeys.TryGetValue(text, out string k) ? k : null;
 		// 对话选项、地点菜单常把选项编号（「O_xxx」或「类型+O_xxx+…」）交给按钮，由按钮自己取文字：编号就在里面
 		if (key == null && text != null)
 		{
