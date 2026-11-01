@@ -24,6 +24,8 @@ public partial class StoryReviewPanel
 	private string _deleteGroup;
 	private float _deleteGroupUntil;
 	private static readonly string[] AnytimeFilters = { "全部", "剧情", "养成", "有备注" };
+	// 列表排法（ConfigManager.AnytimeSaveSort）：按存档栏位分组（不同周目、不同存档各在一组）、按存的时间、按游戏日期
+	private static readonly string[] AnytimeSorts = { "按存档栏位", "按存的时间", "按游戏日期" };
 
 	/// <summary>咖啡伴侣窗口开着吗（随时存档的提示开着窗口时不另外画）。</summary>
 	public static bool IsOpen => Instance != null && Instance._visible;
@@ -128,6 +130,17 @@ public partial class StoryReviewPanel
 			}
 			fx += w + S(8);
 		}
+		fx += S(24);
+		int sort = Mathf.Clamp(ConfigManager.AnytimeSaveSort.Value, 0, AnytimeSorts.Length - 1);
+		for (int i = 0; i < AnytimeSorts.Length; i++)
+		{
+			float w = S(130);
+			if (GUI.Button(new Rect(fx, r.y + S(74), w, S(32)), AnytimeSorts[i], sort == i ? _primary : _button))
+			{
+				ConfigManager.AnytimeSaveSort.Value = sort = i;
+			}
+			fx += w + S(8);
+		}
 		List<SaveSummary> shown = saves.Where(s => _anytimeFilter == 0 || (_anytimeFilter == 1 && s.scene == "Story")
 			|| (_anytimeFilter == 2 && s.scene == "Free") || (_anytimeFilter == 3 && !string.IsNullOrEmpty(s.note))).ToList();
 
@@ -143,13 +156,13 @@ public partial class StoryReviewPanel
 		{
 			GUILayout.Label("没有符合筛选的随时存档。", _muted);
 		}
-		// 按游戏里的月份分组（列表本来就按时间从新到旧），每组可以折起来、整组删除
-		foreach (var group in shown.GroupBy(AnytimeMonth).ToList())
+		// 分组（存档列表本来按存的时间从新到旧），每组可以折起来、整组删除
+		foreach (var (key, label, items) in AnytimeGroups(shown, sort))
 		{
-			DrawAnytimeGroup(save, group.Key, group.ToList());
-			if (!_anytimeFolded.Contains(group.Key))
+			DrawAnytimeGroup(save, key, label, items);
+			if (!_anytimeFolded.Contains(key))
 			{
-				foreach (SaveSummary s in group)
+				foreach (SaveSummary s in items)
 				{
 					DrawAnytimeRow(save, s);
 				}
@@ -166,11 +179,43 @@ public partial class StoryReviewPanel
 		return m.Success ? "第" + m.Groups[1].Value + "年　" + m.Groups[2].Value + "月" : "日期不明";
 	}
 
-	private void DrawAnytimeGroup(AnytimeSave.AnytimeSave save, string month, List<SaveSummary> items)
+	/// <summary>
+	/// 按排法分组，返回（折叠用的键、组名、组里的存档）。
+	/// 按存档栏位：同一栏位的在一组，最近存过的组在上，组里按游戏日期从后往前；按存的时间：每天一组；按游戏日期：每个游戏月一组，从后往前。
+	/// </summary>
+	private static List<(string Key, string Label, List<SaveSummary> Items)> AnytimeGroups(List<SaveSummary> shown, int sort)
+	{
+		switch (sort)
+		{
+			case 1:
+				return shown.GroupBy(s => s.savedAt.Length >= 10 ? s.savedAt.Substring(0, 10) : "日期不明")
+					.Select(g => ("day:" + g.Key, g.Key, g.ToList())).ToList();
+			case 2:
+				return shown.OrderByDescending(AnytimeGameOrder).ThenByDescending(s => s.savedAt, System.StringComparer.Ordinal)
+					.GroupBy(AnytimeMonth).Select(g => ("month:" + g.Key, g.Key, g.ToList())).ToList();
+			default:
+				return shown.GroupBy(s => s.slot ?? "")
+					.Select(g => ("slot:" + g.Key, AnytimeSlotLabel(g.Key),
+						g.OrderByDescending(AnytimeGameOrder).ThenByDescending(s => s.savedAt, System.StringComparer.Ordinal).ToList())).ToList();
+		}
+	}
+
+	/// <summary>存档时的游戏日期排成一个数（年、月、上中下旬），比先后用；没记下日期的排最后。</summary>
+	private static int AnytimeGameOrder(SaveSummary s)
+	{
+		var m = System.Text.RegularExpressions.Regex.Match(s.gameTime ?? "", @"^第(\d+)年(\d+)月(上|中|下)?");
+		return m.Success ? int.Parse(m.Groups[1].Value) * 1000 + int.Parse(m.Groups[2].Value) * 10 + "上中下".IndexOf(m.Groups[3].Value.Length > 0 ? m.Groups[3].Value[0] : '上') : -1;
+	}
+
+	/// <summary>存档栏位的名字照游戏读档页的写法（「传奇018」）；从节点存档重玩的、以前没记栏位的另写。</summary>
+	private static string AnytimeSlotLabel(string slot) =>
+		slot == StoryNodes.ReplaySlot ? "从节点存档重玩" : string.IsNullOrEmpty(slot) ? "栏位不明" : LOMAssistant.Features.Extras.SaveBrowser.SlotLabel(slot);
+
+	private void DrawAnytimeGroup(AnytimeSave.AnytimeSave save, string month, string title, List<SaveSummary> items)
 	{
 		bool folded = _anytimeFolded.Contains(month);
 		GUILayout.BeginHorizontal();
-		if (GUILayout.Button((folded ? "▶ " : "▼ ") + "<b>" + month + "</b>　<color=#73644F>" + items.Count + " 个存档</color>", _rich, Ctl()))
+		if (GUILayout.Button((folded ? "▶ " : "▼ ") + "<b>" + title + "</b>　<color=#73644F>" + items.Count + " 个存档</color>", _rich, Ctl()))
 		{
 			if (!_anytimeFolded.Remove(month))
 			{
@@ -182,8 +227,8 @@ public partial class StoryReviewPanel
 		int removable = items.Count(s => string.IsNullOrEmpty(s.note));
 		GUI.enabled = removable > 0 && !save.Busy;
 		bool confirm = _deleteGroup == month && Time.unscaledTime < _deleteGroupUntil;
-		string label = confirm ? "确定删除这 " + removable + " 个？" : "删这一组（有备注的不删）";
-		if (GUILayout.Button(label, confirm ? _primary : _button, GUILayout.Width(S(confirm ? 200 : 240)), Ctl()))
+		string deleteText = confirm ? "确定删除这 " + removable + " 个？" : "删这一组（有备注的不删）";
+		if (GUILayout.Button(deleteText, confirm ? _primary : _button, GUILayout.Width(S(confirm ? 200 : 240)), Ctl()))
 		{
 			if (confirm)
 			{

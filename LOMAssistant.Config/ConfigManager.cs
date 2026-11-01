@@ -176,6 +176,7 @@ public static class ConfigManager
 	public static ConfigElement<bool> ColorOptionDeltas;
 
 	public static ConfigElement<int> AnytimeSaveLimit;
+	public static ConfigElement<int> AnytimeSaveSort;
 
 	public static ConfigElement<KeyCode> AnytimeLoadKey;
 
@@ -488,6 +489,7 @@ public static class ConfigManager
 		EnableDebugPanel = new ConfigElement<bool>("EnableDebugPanel", "数值面板热键（F9 打开「数值」页）。已不用：不想要就把 DebugPanelKey 设成 None", defaultValue: true);
 		DebugPanelKey = new ConfigElement<KeyCode>("DebugPanelKey", "打开数值面板的热键，如 F9 / P 等", KeyCode.F9);
 		EnableAnytimeSave = new ConfigElement<bool>("EnableAnytimeSave", "是否启用随时存档（剧情台词、选项、掷骰和养成界面都能存，每次存一个新档，不占原版存档栏）。true=开，false=关，改后重启生效", defaultValue: true);
+		AnytimeSaveSort = new ConfigElement<int>("AnytimeSaveSort", "随时存档页的列表怎么排（在随时存档页点，自动记录）：0=按存档栏位分组（默认），1=按存的时间，2=按游戏日期", 0);
 		AnytimeSaveLimit = new ConfigElement<int>("AnytimeSaveLimit", "随时存档最多保留几个（有备注的不算，也不删）：下次存新的随时存档时，超出的旧存档会一次删掉；0=不限（默认），不自动删", 0);
 		AnytimeSaveKey = new ConfigElement<KeyCode>("AnytimeSaveKey", "随时存档：存一个新的随时存档的热键", KeyCode.F5);
 		AnytimeLoadKey = new ConfigElement<KeyCode>("AnytimeLoadKey", "随时存档：读取最近一个随时存档的热键", KeyCode.F7);

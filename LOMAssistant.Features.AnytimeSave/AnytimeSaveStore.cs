@@ -18,6 +18,8 @@ public class SaveSummary
 	public string file = "";
 	public int number;
 	public string savedAt = "", scene = "", gameTime = "", script = "", preview = "", note = "";
+	/// <summary>存档时游戏的存档栏位（「传奇018」的 018；从节点存档重玩时是 replay），列表按栏位分组用；以前的索引里没有，是 null，打开列表时补上。</summary>
+	public string slot;
 	/// <summary>存档经过的剧本和哈希，用来看游戏更新有没有改到这些剧本；以前的索引里没有，是 null。</summary>
 	public List<ScriptStamp> scripts;
 	/// <summary>存档时之前的几句对白（最近的在最后）。</summary>
@@ -37,6 +39,8 @@ public partial class AnytimeSave
 	private const string IndexFile = "index.json";
 	private static readonly Regex NewName = new Regex(@"^Anytime_(\d+)\.json$");
 	private static readonly Regex OldName = new Regex(@"^Slot_(\d+)\.json$");
+	// 存档内容是包在外层 JSON 里的字符串，里面的引号都带反斜杠
+	private static readonly Regex SlotField = new Regex(@"\\""nativeSlot\\"":\\""([^\\""]*)\\""");
 	private List<SaveSummary> summaries;
 
 	/// <summary>随时存档用不了时的原因（版本核验没通过等）；能用时是 null。</summary>
@@ -86,6 +90,20 @@ public partial class AnytimeSave
 				summaries.Add(summary);
 				changed = true;
 			}
+		}
+		// 以前的索引没记栏位：从存档文件里找出来补上（只找这一项，不整个解析）
+		foreach (SaveSummary s in summaries.Where(s => s.slot == null))
+		{
+			try
+			{
+				Match m = SlotField.Match(File.ReadAllText(Path.Combine(StoreRoot, s.file), Encoding.UTF8));
+				s.slot = m.Success ? m.Groups[1].Value : "";
+			}
+			catch (Exception)
+			{
+				s.slot = "";
+			}
+			changed = true;
 		}
 		Sort();
 		if (changed)
@@ -167,6 +185,7 @@ public partial class AnytimeSave
 			script = data.scene == "Free" ? "" : data.currentScript ?? data.rootScript ?? "",
 			preview = RichText.Strip(data.preview ?? ""),
 			scripts = data.scripts,
+			slot = data.nativeSlot ?? "",
 		};
 		List<Entry> trace = data.trace ?? new List<Entry>();
 		int end = data.scene == "Story" && data.target >= 0 && data.target < trace.Count ? data.target : trace.Count - 1;

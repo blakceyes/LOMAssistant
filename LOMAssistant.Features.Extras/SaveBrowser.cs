@@ -653,7 +653,7 @@ public class SaveBrowser : MonoBehaviour
 
 	private static string SlotName(int index) => index.ToString().PadLeft(3, '0');
 
-	private static string SlotLabel(string slot)
+	internal static string SlotLabel(string slot)
 	{
 		try
 		{
