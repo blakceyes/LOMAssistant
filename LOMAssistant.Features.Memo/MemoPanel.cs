@@ -468,11 +468,12 @@ internal sealed class MemoPanel : MonoBehaviour
 			: near || target == null ? "<color=" + Gold + ">●</color>"
 			: "○";
 		float icon = 20f * _scale;
+		// 韩语「변경」、日语「変更」两个字比汉字按钮宽，统一放到 28
+		float bw = 28f * _scale;
 		GUI.Label(new Rect(row.x, row.y + 4f * _scale, icon, icon), status, _text);
-		GUI.Label(new Rect(row.x + icon, row.y + 5f * _scale, row.width - icon - 116f * _scale, 20f * _scale),
+		GUI.Label(new Rect(row.x + icon, row.y + 5f * _scale, row.width - icon - bw * 4f - 20f * _scale, 20f * _scale),
 			TextConverter.ForDisplay(Title(item, target)), OneLine(_text));
 
-		float bw = 24f * _scale;
 		float bx = row.xMax - bw * 4f;
 		Rect[] buttons =
 		{
@@ -487,12 +488,12 @@ internal sealed class MemoPanel : MonoBehaviour
 			MemoStore.Save();
 			ResetState(item);
 		}
-		if (GUI.Button(buttons[1], item.muted ? "静" : "响", item.muted ? _rowButtonSelected : _rowButton))
+		if (GUI.Button(buttons[1], TextConverter.ForDisplay(item.muted ? "静" : "响"), item.muted ? _rowButtonSelected : _rowButton))
 		{
 			item.muted = !item.muted;
 			MemoStore.Save();
 		}
-		if (GUI.Button(buttons[2], "改", _rowButton))
+		if (GUI.Button(buttons[2], TextConverter.ForDisplay("改"), _rowButton))
 		{
 			StartEdit(item);
 		}
@@ -508,9 +509,10 @@ internal sealed class MemoPanel : MonoBehaviour
 			}
 		}
 
-		string current = target == null ? "找不到数据" : "当前 <b>" + target.Now + "</b>" + (string.IsNullOrEmpty(target.Unit) ? "" : " " + target.Unit);
+		string current = target == null ? TextConverter.ForDisplay("找不到数据")
+			: TextConverter.ForDisplay("当前") + " <b>" + target.Now + "</b>" + UnitText(target.Unit);
 		GUI.Label(new Rect(row.x, row.y + 28f * _scale, row.width, 18f * _scale),
-			TextConverter.ForDisplay(ConditionText(item) + "　·　" + current), _dim);
+			ConditionText(item) + "　·　" + current, _dim);
 		float deadlineY = 48f * _scale;
 		int max = MaxOf(target);
 		if (target != null && max > 0)
@@ -582,7 +584,7 @@ internal sealed class MemoPanel : MonoBehaviour
 		r.y += 54f * _scale;
 
 		Label(ref r, "截止时间", 58f * _scale);
-		if (GUI.Button(new Rect(r.x, r.y, 60f * _scale, 22f * _scale), _editDeadline ? "有限时" : "不限时",
+		if (GUI.Button(new Rect(r.x, r.y, 84f * _scale, 22f * _scale), TextConverter.ForDisplay(_editDeadline ? "有限时" : "不限时"),
 			_editDeadline ? _buttonSelected : _button))
 		{
 			_editDeadline = !_editDeadline;
@@ -600,12 +602,12 @@ internal sealed class MemoPanel : MonoBehaviour
 		}
 
 		Rect save = new Rect(r.x, r.y, 88f * _scale, 26f * _scale);
-		if (GUI.Button(save, "保存", _primary) && SaveEdit())
+		if (GUI.Button(save, TextConverter.ForDisplay("保存"), _primary) && SaveEdit())
 		{
 			GUIUtility.keyboardControl = 0;
 		}
 		Rect cancel = new Rect(r.x + 96f * _scale, r.y, 88f * _scale, 26f * _scale);
-		if (GUI.Button(cancel, "取消", _button))
+		if (GUI.Button(cancel, TextConverter.ForDisplay("取消"), _button))
 		{
 			_editing = null;
 			GUIUtility.keyboardControl = 0;
@@ -618,7 +620,7 @@ internal sealed class MemoPanel : MonoBehaviour
 		float baseHeight = 386f * _scale;
 		if (_editDeadline)
 		{
-			baseHeight += 96f * _scale;
+			baseHeight += 126f * _scale;
 		}
 		baseHeight += 26f * _scale * Mathf.Max(0, SearchResults().Count);
 		return Mathf.Max(baseHeight, 220f * _scale);
@@ -683,14 +685,17 @@ internal sealed class MemoPanel : MonoBehaviour
 
 	private void DrawDateSteppers(ref Rect r)
 	{
-		Stepper(ref r, "年", ref _editYear, ref _editYearText, 1, 99);
-		Stepper(ref r, "月", ref _editMonth, ref _editMonthText, 1, 12);
-		Label(ref r, "旬", 12f * _scale);
+		bool english = TextConverter.DisplayLanguage == UiText.English;
+		Stepper(ref r, "年", ref _editYear, ref _editYearText, 1, 99, english);
+		Stepper(ref r, "月", ref _editMonth, ref _editMonthText, 1, 12, english);
+		r.x = 0f;
+		r.y += 30f * _scale;
+		Label(ref r, "旬", (english ? 26f : 12f) * _scale);
 		string[] stages = { "上", "中", "下" };
 		for (int i = 0; i < stages.Length; i++)
 		{
 			Rect b = new Rect(r.x + i * 32f * _scale, r.y, 28f * _scale, 22f * _scale);
-			if (GUI.Button(b, stages[i], _editStage == i + 1 ? _buttonSelected : _button))
+			if (GUI.Button(b, TextConverter.ForDisplay(stages[i]), _editStage == i + 1 ? _rowButtonSelected : _rowButton))
 			{
 				_editStage = i + 1;
 			}
@@ -702,7 +707,7 @@ internal sealed class MemoPanel : MonoBehaviour
 		{
 			Rect b = new Rect(r.x, r.y, 92f * _scale, 22f * _scale);
 			GUI.enabled = now >= 0;
-			if (GUI.Button(b, "+" + months + "个月", _button))
+			if (GUI.Button(b, TextConverter.ForDisplay("+" + months + "个月"), _button))
 			{
 				SetDate(now + months * 3);
 			}
@@ -719,9 +724,9 @@ internal sealed class MemoPanel : MonoBehaviour
 	}
 
 	// 年 / 月调节器：－、数字框（直接打字，越界自动夹回范围）、＋；按钮和快捷日期都会把新值写回数字框
-	private void Stepper(ref Rect r, string label, ref int value, ref string text, int min, int max)
+	private void Stepper(ref Rect r, string label, ref int value, ref string text, int min, int max, bool english)
 	{
-		Label(ref r, label, 12f * _scale);
+		Label(ref r, label, (english ? 26f : 12f) * _scale);
 		float h = 22f * _scale;
 		float bw = 20f * _scale;
 		Rect minus = new Rect(r.x, r.y, bw, h);
@@ -878,15 +883,20 @@ internal sealed class MemoPanel : MonoBehaviour
 	private static string ConditionText(MemoItem item)
 	{
 		MemoTarget target = MemoTargets.Find(item.kind, item.key);
-		string name = target?.Name ?? "数据不在当前存档";
-		string unit = target?.Unit ?? "";
+		string name = TextConverter.ForDisplay(target?.Name ?? "数据不在当前存档");
 		string op = item.op switch
 		{
 			MemoOp.AtMost => "≤",
 			MemoOp.Equal => "＝",
 			_ => "≥",
 		};
-		return name + " " + op + " " + item.value + unit;
+		return name + " " + op + " " + item.value + UnitText(target?.Unit);
+	}
+
+	// 单位词（层/级/点/个）单独翻好再拼在数字后面；% 各语言通用
+	private static string UnitText(string unit)
+	{
+		return string.IsNullOrEmpty(unit) ? "" : " " + TextConverter.ForDisplay(unit);
 	}
 
 	private static string Title(MemoItem item, MemoTarget target)

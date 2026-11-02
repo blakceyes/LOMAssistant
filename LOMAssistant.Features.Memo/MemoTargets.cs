@@ -266,7 +266,7 @@ internal static class MemoTargets
 			{
 				Kind = MemoKind.Martial,
 				Key = "lvl:" + b.Id,
-				Name = name + " 层数",
+				Name = name + "　层数",
 				Group = "功法",
 				Unit = "层",
 				Current = () => Mathf.Min(max, b.CurrentMartialLevel + 1),
@@ -280,7 +280,7 @@ internal static class MemoTargets
 			{
 				Kind = MemoKind.Martial,
 				Key = "pt:" + b.Id,
-				Name = name + " 本层点数",
+				Name = name + "　本层点数",
 				Group = "功法",
 				Unit = "点",
 				Current = () => b.CurrentLevelPoints,
@@ -293,7 +293,7 @@ internal static class MemoTargets
 			{
 				Kind = MemoKind.Martial,
 				Key = "pct:" + b.Id,
-				Name = name + " 修炼进度",
+				Name = name + "　修炼进度",
 				Group = "功法",
 				Unit = "%",
 				Current = () => Percent(InvestedBookPoints(b), total),
@@ -339,7 +339,7 @@ internal static class MemoTargets
 			{
 				Kind = kind,
 				Key = "pt:" + u.Key,
-				Name = name + " 本级点数",
+				Name = name + "　本级点数",
 				Group = group,
 				Unit = "点",
 				Current = () => u.CurrentPoints,
@@ -348,7 +348,7 @@ internal static class MemoTargets
 				Hint = () => open ? "本级 " + u.CurrentPoints + " / " + need + " 点" : "未开发或已满级",
 			});
 			int total = TotalUpgradePoints(u);
-			string progressName = name + (kind == MemoKind.Alchemy ? " 炼制进度" : " 开发进度");
+			string progressName = name + (kind == MemoKind.Alchemy ? "　炼制进度" : "　开发进度");
 			list.Add(new MemoTarget
 			{
 				Kind = kind,
