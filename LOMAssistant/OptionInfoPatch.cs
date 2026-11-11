@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using BepInEx;
 using Fungus;
 using HarmonyLib;
 using LOMAssistant.Config;
+using LOMAssistant.Features.Story;
 using LOMAssistant.LuaParse;
 using Mortal.Core;
 using Mortal.Free;
@@ -149,6 +151,9 @@ internal static class OptionInfoPatch
 	/// <summary>为真时取选项文字不经过下面的结果说明（本 Mod 自己取原文用）。</summary>
 	public static bool Raw;
 
+	/// <summary>设置「选项提示、判定记录」：补丁一直打着，每次用到时看开没开，改了马上生效。</summary>
+	internal static bool On => ConfigManager.EnableOptionInfo.Value;
+
 	[HarmonyPostfix]
 	[HarmonyPatch(typeof(LeanLocalizationResolver), "GetStoryText")]
 	public static void LeanLocalizationResolver_GetStoryText_Postfix(string key, ref string __result)
@@ -159,12 +164,28 @@ internal static class OptionInfoPatch
 		{
 			return;
 		}
+		// 对话选项：后续对白是否已读（单独的开关「选项、骰子已读标记」，不跟着选项提示）
+		if (key != null && key.StartsWith("O_") && ConfigManager.ShowReadMarks.Value)
+		{
+			try
+			{
+				__result += ReadMark(StoryStep.Option, key, "#73644F");
+			}
+			catch (Exception ex)
+			{
+				FileLogger.LogWarning("选项标看过没失败: " + ex.Message);
+			}
+		}
+		if (!On)
+		{
+			return;
+		}
 		if (ConfigManager.OptionResultMode.Value != 0)
 		{
 			// 强行放出来的选项不看这个设置，总要标出条件没满足
 			if (HiddenOptions.Unmet(key))
 			{
-				__result = __result + TextConverter.ForDisplay("\n<size=16>(" + HiddenOptions.Mark + ")</size>");
+				__result = __result + TextConverter.ForDisplay("\n<size=" + NoteSize + ">(" + HiddenOptions.Mark + ")</size>");
 			}
 			return;
 		}
@@ -177,9 +198,12 @@ internal static class OptionInfoPatch
 		}
 		if (note.Length > 0)
 		{
-			__result = __result + TextConverter.ForDisplay("\n<size=16>(" + ColorDeltas(note) + ")</size>");
+			__result = __result + TextConverter.ForDisplay("\n<size=" + NoteSize + ">(" + ColorDeltas(note) + ")</size>");
 		}
 	}
+
+	/// <summary>选项下面那行后果说明的字号：16 乘「游戏文字大小」（rich text 的 size 是写死的像素，不会跟着那个设置放大）。</summary>
+	private static int NoteSize => Mathf.RoundToInt(16f * Mathf.Clamp(ConfigManager.GameFontScale.Value, 50, 200) / 100f);
 
 	// 「嘴力 +1」「南宫浅好感 -2」「银两 +500」：加的绿色、减的红色（条件里的「需>=40」「=1」不算）
 	private static readonly Regex Delta = new Regex(@"(?<=^|[、；：:\s(（①-⑳])([^\s、；：:()（）<>=①-⑳]+?) ([+-]\d+)(?=$|[、；）)\s])");
@@ -215,7 +239,7 @@ internal static class OptionInfoPatch
 			{
 				string condition = RichText.Strip(DataHelper.ParseConditionCheckpoint(locked.Condition));
 				string effects = locked.Unlocked != null && LuaParser.Instance.OptionResult.TryGetValue(locked.Unlocked, out var unlockedActions)
-					? RichText.Strip(TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(unlockedActions)))
+					? LuaParser.DisplayDescription(unlockedActions)
 					: "";
 				return condition.IsNullOrWhiteSpace() ? "" : condition + (effects.IsNullOrWhiteSpace() ? "" : "；解锁后：" + effects);
 			}
@@ -233,7 +257,7 @@ internal static class OptionInfoPatch
 			}
 			if (LuaParser.Instance.OptionResult.TryGetValue(key, out var value))
 			{
-				string text = TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(value));
+				string text = LuaParser.DisplayDescription(value);
 				if (jumps.Length > 0)
 				{
 					text = text.IsNullOrWhiteSpace() ? jumps : text + "；" + jumps;
@@ -296,6 +320,10 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(DiceMenuDialog), "OnEnable")]
 	public static void DiceMenuDialog_OnEnable_Postfix(DiceMenuDialog __instance)
 	{
+		if (!On)
+		{
+			return;
+		}
 		foreach (UnityEngine.UI.Button button in __instance.CachedButtons ?? new UnityEngine.UI.Button[0])
 		{
 			if (button != null)
@@ -310,14 +338,92 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(DiceOption), "UpdateContent")]
 	public static void DiceOption_UpdateContent_Postfix(DiceOption __instance)
 	{
+		if (ConfigManager.ShowReadMarks.Value)
+		{
+			DiceReadMark(__instance);
+		}
+		if (!On)
+		{
+			return;
+		}
 		DiceNoWrap(__instance);
 		DiceFitToScreen(__instance);
+	}
+
+	/// <summary>
+	/// 选了这个选项（kind 为选项）或掷到这一档（kind 为掷骰）后的对白看过没，写成「　没看过」「　看过一半」「　看过」（和「分支判定手动选择」一样）。
+	/// 算现在这段剧本里这条路上的对白；这条路直接接到别的剧本时，也算那段剧本开头不分岔的对白。没有对白、认不出的返回空串。
+	/// </summary>
+	internal static string ReadMark(string kind, string key, string color = "#9A9284")
+	{
+		string script = (LastScriptKey ?? "").Split('#')[0];
+		if (script.EndsWith(".LuaScript"))
+		{
+			script = script.Substring(0, script.Length - ".LuaScript".Length);
+		}
+		StoryScript s = StoryScripts.Get(script);
+		ReadStorySystem read = ReadStorySystem.Instance;
+		if (string.IsNullOrEmpty(key) || s == null || read == null)
+		{
+			return "";
+		}
+		bool OnArm(List<StoryStep> path) => path.Any(st => st.Kind == kind && st.Key == key);
+		var lines = s.Talk.Where(t => OnArm(t.Path)).Select(t => t.Key).ToList();
+		foreach (StoryExit exit in s.Exits.Where(e => OnArm(e.Path) && !e.ToMap && !e.ToTitle))
+		{
+			StoryScript next = StoryScripts.Get(StoryScripts.FlowTarget(exit));
+			if (next != null && !string.Equals(next.Name, s.Name, StringComparison.OrdinalIgnoreCase))
+			{
+				lines.AddRange(next.Talk.Where(t => t.Path.Count == 0).Select(t => t.Key));
+			}
+		}
+		if (lines.Count == 0)
+		{
+			return "";
+		}
+		int unread = lines.Count(k => !read.ExistKey(k));
+		return "　" + (unread == lines.Count ? RichText.Golden(TextConverter.ForDisplay("没看过"))
+			: unread > 0 ? RichText.Golden(TextConverter.ForDisplay("看过一半"))
+			: "<color=" + color + ">" + TextConverter.ForDisplay("看过") + "</color>");
+	}
+
+	/// <summary>掷骰线路标题后面写这一档的对白看过没。</summary>
+	private static void DiceReadMark(DiceOption option)
+	{
+		try
+		{
+			string key = Traverse.Create(option).Field("_sourceText").GetValue<UnityEngine.UI.Text>()?.text?.Split('|')[0] ?? "";
+			string mark = ReadMark(StoryStep.Dice, key);
+			if (mark.Length == 0)
+			{
+				return;
+			}
+			foreach (string field in new[] { "_normalText", "_highText" })
+			{
+				TMPro.TMP_Text text = Traverse.Create(option).Field(field).GetValue<TMPro.TMP_Text>();
+				if (text != null && !string.IsNullOrEmpty(text.text))
+				{
+					int end = text.text.IndexOf('\n');
+					text.text = end < 0 ? text.text + mark : text.text.Insert(end, mark);
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			FileLogger.LogWarning("骰子线路标看过没失败: " + ex.Message);
+		}
 	}
 
 	// 选中时显示的是另一个文字框（_highText，粗体字型，字宽不同），换上来时再量一次
 	[HarmonyPostfix]
 	[HarmonyPatch(typeof(DiceOption), "Select")]
-	public static void DiceOption_Select_Postfix(DiceOption __instance) => DiceFitToScreen(__instance);
+	public static void DiceOption_Select_Postfix(DiceOption __instance)
+	{
+		if (On)
+		{
+			DiceFitToScreen(__instance);
+		}
+	}
 
 	/// <summary>说明往右写到画面右边还写不完时，把说明的字缩小到刚好写到画面右边为止（最小 <see cref="DiceMinDescSize"/>）。</summary>
 	private const float DiceMinDescSize = 11f;
@@ -406,7 +512,7 @@ internal static class OptionInfoPatch
 		{
 			HandleDialogChange(_positionCtrl, addSuffix: false);
 		}
-		if (HasTriggerMission(fieldValue, out var missionKey))
+		if (On && HasTriggerMission(fieldValue, out var missionKey))
 		{
 			HandleDialogChange(__instance, addSuffix: true, "可触发：" + missionKey);
 		}
@@ -426,6 +532,10 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(ConditionResultData), "Execute")]
 	public static void PrefixExecuteConditionResult(ConditionResultData __instance)
 	{
+		if (!On)
+		{
+			return;
+		}
 		List<ConditionResultItem> fieldValue = __instance.GetFieldValue<List<ConditionResultItem>>("_items");
 		LogCheckpoint("触发剧情检查点:", fieldValue);
 	}
@@ -435,7 +545,7 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(MissionCheckData), "Check")]
 	public static void PostfixCheckMission(MissionCheckData __instance, bool __result)
 	{
-		if (!__result)
+		if (!__result || !On)
 		{
 			return;
 		}
@@ -457,6 +567,10 @@ internal static class OptionInfoPatch
 	[HarmonyPatch(typeof(SwitchResultData), "Execute")]
 	public static void PrefixExecuteSwitchResult(SwitchResultData __instance)
 	{
+		if (!On)
+		{
+			return;
+		}
 		List<ConditionResultItem> fieldValue = __instance.GetFieldValue<List<ConditionResultItem>>("_items");
 		LogCheckpoint("触发剧情分支检查点:", fieldValue);
 	}
@@ -568,7 +682,7 @@ internal static class OptionInfoPatch
 	private static string MissionName(MissionCheckData check, string fallback)
 	{
 		LOMAssistant.Features.Story.StoryMission known = LOMAssistant.Features.Story.StoryAtlas.Find(check.Key);
-		string desc = TextConverter.ToSimplified(check.GetFieldValue<string>("_desc") ?? "").Split('\n')[0].Trim();
+		string desc = TextConverter.ToSimplified(UiQuestNames.Description(check.Key, check.GetFieldValue<string>("_desc")) ?? "").Split('\n')[0].Trim();
 		return known != null && known.Title.Length > 0 ? known.Title : desc.Length > 0 ? desc : fallback;
 	}
 
@@ -592,36 +706,8 @@ internal static class OptionInfoPatch
 		}
 	}
 
-	// 判定记录写进游戏的回想（1.0.6001 起是 StoryLogData；旧的 Fungus NarrativeLog 不再显示）。
-	// 不写进存档：读档后清掉，Mod 卸掉后也不会在玩家存档里留东西。文字记录游戏会用单独的颜色显示
-	// 本 Mod 写进回想的文字（认出自己的记录用，回想最多 300 条，这里留多一点）
-	private static readonly HashSet<string> _ours = new HashSet<string>();
-	private static readonly AccessTools.FieldRef<StoryLogEntryView, Text> LogContent = AccessTools.FieldRefAccess<StoryLogEntryView, Text>("_contentText");
-	private static readonly AccessTools.FieldRef<StoryLogEntryView, int> LogChoiceSize = AccessTools.FieldRefAccess<StoryLogEntryView, int>("_choiceFontSize");
-
-	// 回想里的判定记录用游戏选项那一行的小字号，不和对白一样大（游戏每次显示条目都先把字号重置，再按类型改）
-	[HarmonyPostfix]
-	[HarmonyPatch(typeof(StoryLogEntryView), nameof(StoryLogEntryView.Setup))]
-	public static void LogEntrySetup_Postfix(StoryLogEntryView __instance, StoryLogEntry entry)
-	{
-		try
-		{
-			if (entry == null || entry.Type != StoryLogType.Text || entry.Text == null || !_ours.Contains(entry.Text))
-			{
-				return;
-			}
-			Text content = LogContent(__instance);
-			int small = LogChoiceSize(__instance);
-			if (content != null)
-			{
-				content.fontSize = small > 0 && small < content.fontSize ? small : Mathf.RoundToInt(content.fontSize * 0.72f);
-			}
-		}
-		catch (Exception ex)
-		{
-			FileLogger.Log("[回想] 判定记录改字号失败（已忽略）：" + ex.Message);
-		}
-	}
+	// 判定记录写进游戏的回想（1.0.6001 起是 StoryLogData，更早的版本是 Fungus 的 NarrativeLog，见 StoryLogCompat）。
+	// 1.0.6001 起不写进存档：读档后清掉，Mod 卸掉后也不会在玩家存档里留东西。文字记录游戏会用单独的颜色显示
 
 	// 同一旬里内容一样的记录只写一次：养成地图每刷新一次地点事件、每做一次行动，游戏都会把同样的条件再查一遍
 	private static readonly HashSet<string> _logged = new HashSet<string>();
@@ -638,22 +724,16 @@ internal static class OptionInfoPatch
 		GameTime now = PlayerStatManagerData.Instance?.GameTime;
 		string key = (ReferenceEquals(now, null) ? "" : now.Year + "-" + now.Month + "-" + (int)now.Stage + "|") + text;
 		// 读档时游戏清掉了不存档的记录（回想条数变少），去重表也跟着清
-		if (_logged.Count > 2000 || StoryLogData.Entries.Count < _loggedAt)
+		if (_logged.Count > 2000 || StoryLogCompat.Count < _loggedAt)
 		{
 			_logged.Clear();
 		}
 		if (text.Length > 0 && _logged.Add(key))
 		{
 			// 不经过本 Mod 界面的翻译，这里先换成界面语言（繁体、韩语、日语）
-			string shown = TextConverter.ForDisplay(text);
-			if (_ours.Count > 1000)
-			{
-				_ours.Clear();
-			}
-			_ours.Add(shown);
-			StoryLogData.AddText(shown, false);
+			StoryLogCompat.AddText(TextConverter.ForDisplay(text));
 		}
-		_loggedAt = StoryLogData.Entries.Count;
+		_loggedAt = StoryLogCompat.Count;
 	}
 }
 
@@ -681,10 +761,13 @@ internal sealed class OptionHoverHint : MonoBehaviour
 		}
 	}
 
+	// 选项提示开着、后果设成鼠标悬停
+	private static bool Hovering => OptionInfoPatch.On && ConfigManager.OptionResultMode.Value == 1;
+
 	private void Update()
 	{
 		// 选项后果设成悬停时都看；其余时候只为强行放出来的选项显示条件
-		if (ConfigManager.OptionResultMode.Value != 1 && !HiddenOptions.Any)
+		if (!Hovering && !HiddenOptions.Any)
 		{
 			return;
 		}
@@ -716,7 +799,7 @@ internal sealed class OptionHoverHint : MonoBehaviour
 
 	private void OnGUI()
 	{
-		if ((ConfigManager.OptionResultMode.Value != 1 && !HiddenOptions.Any) || UiHider.Active || Event.current.type != EventType.Repaint)
+		if ((!Hovering && !HiddenOptions.Any) || UiHider.Active || Event.current.type != EventType.Repaint)
 		{
 			return;
 		}
@@ -775,7 +858,7 @@ internal sealed class OptionHoverHint : MonoBehaviour
 		{
 			return "";
 		}
-		return ConfigManager.OptionResultMode.Value == 1 ? OptionInfoPatch.OptionNote(key) : HiddenOptions.Note(key);
+		return Hovering ? OptionInfoPatch.OptionNote(key) : HiddenOptions.Note(key);
 	}
 
 	private void Draw(Button button, string note, Button[] group)
@@ -815,6 +898,166 @@ internal sealed class OptionHoverHint : MonoBehaviour
 			y = Screen.height - top - height - 4f * scale;
 		}
 		GUI.Box(new Rect(x, y, width, height), content, PanelTheme.Sync(_style));
+	}
+}
+
+/// <summary>
+/// 掷骰线路（DiceOption，TextMeshPro）装不下文字时加高：「游戏文字大小」放大后不再和上下两行叠在一起。
+/// 每次换内容的下一帧（排版好、知道宽度了）量一次文字要多高，比文字框原来的高度多出多少，这一行就加高多少，够了就换回原来的高度。
+/// 线路排在 VerticalLayoutGroup 里，它不管子物体高度（按各自的高度往下排），所以直接改这一行的高度；
+/// 游戏会把高度改回去，所以挂一个小组件，每帧画之前（LateUpdate）按记下的原高度重新设一次。
+/// 对话选项按钮（NormalOptionButton）试过同样加高，按钮和里面的边框图都改了高度，画出来的边框还是原样，没有做。
+/// </summary>
+internal static class OptionNoteLayout
+{
+	private static readonly HashSet<string> Logged = new HashSet<string>();
+
+	[HarmonyPostfix]
+	[HarmonyPatch(typeof(DiceOption), "UpdateContent")]
+	public static void DiceOption_Postfix(DiceOption __instance) => Later(__instance);
+
+	// 选中时换成另一个文字框（_highText），再量一次
+	[HarmonyPostfix]
+	[HarmonyPatch(typeof(DiceOption), "Select")]
+	public static void DiceSelect_Postfix(DiceOption __instance) => Later(__instance);
+
+	private static void Later(MonoBehaviour row)
+	{
+		if (row != null && row.isActiveAndEnabled)
+		{
+			row.StartCoroutine(FitNextFrame(row));
+		}
+	}
+
+	private static System.Collections.IEnumerator FitNextFrame(MonoBehaviour row)
+	{
+		yield return null;
+		Fit(row);
+	}
+
+	private static void Fit(MonoBehaviour row)
+	{
+		try
+		{
+			if (row == null || !(row.transform is RectTransform rect))
+			{
+				return;
+			}
+			OptionRowFit fit = row.GetComponent<OptionRowFit>() ?? row.gameObject.AddComponent<OptionRowFit>();
+			fit.Remember(rect);
+			float extra = 0f;
+			if (row is DiceOption dice)
+			{
+				foreach (string field in new[] { "_normalText", "_highText" })
+				{
+					TMPro.TMP_Text text = dice.GetFieldValue<TMPro.TMP_Text>(field);
+					if (text != null && text.gameObject.activeInHierarchy)
+					{
+						extra = Mathf.Max(extra, text.preferredHeight - fit.TextHeight(text.rectTransform));
+					}
+				}
+			}
+			fit.Extra = Mathf.Max(0f, Mathf.Ceil(extra));
+			if (fit.Extra > 0f && Logged.Add(row.GetType().Name))
+			{
+				FileLogger.Log($"[选项排版] {row.GetType().Name} 加高 {fit.Extra:0}（原来 {fit.RowHeight:0}）");
+			}
+		}
+		catch (Exception ex)
+		{
+			FileLogger.LogWarning("[选项排版] 选项加高失败: " + ex.Message);
+		}
+	}
+}
+
+/// <summary>挂在选项上：记下这一行、边框图、固定高度的文字框原来的高度和位置，每帧按 <see cref="Extra"/> 加高（顶边不动）。</summary>
+internal class OptionRowFit : MonoBehaviour
+{
+	private struct Part
+	{
+		public RectTransform Rect;
+		public float Height;
+		public Vector2 Position;
+	}
+
+	/// <summary>要加高多少（0 = 原样）。</summary>
+	public float Extra;
+	public float RowHeight { get; private set; }
+
+	private RectTransform _row;
+	private readonly List<Part> _parts = new List<Part>();
+	private readonly Dictionary<int, float> _textHeights = new Dictionary<int, float>();
+
+	/// <summary>第一次量之前记下原来的样子（这时还没改过）。</summary>
+	public void Remember(RectTransform row)
+	{
+		if (_row != null)
+		{
+			return;
+		}
+		_row = row;
+		RowHeight = row.rect.height;
+		foreach (Transform child in row)
+		{
+			// 贴着顶边或底边、固定高度、原来和这一行一样高的子物体：边框图（正常、选中、悬停、不能选各一张）
+			if (child is RectTransform frame && Mathf.Approximately(frame.anchorMin.y, frame.anchorMax.y) && Mathf.Abs(frame.rect.height - RowHeight) <= 1f)
+			{
+				_parts.Add(new Part { Rect = frame, Height = frame.rect.height, Position = frame.anchoredPosition });
+			}
+		}
+	}
+
+	/// <summary>文字框原来的高度。高度固定的文字框（不贴着上下边）也记下来，跟着一起加高。</summary>
+	public float TextHeight(RectTransform box)
+	{
+		int id = box.GetInstanceID();
+		if (!_textHeights.TryGetValue(id, out float height))
+		{
+			height = box.rect.height;
+			_textHeights[id] = height;
+			if (Mathf.Approximately(box.anchorMin.y, box.anchorMax.y) && !_parts.Exists(p => p.Rect == box))
+			{
+				_parts.Add(new Part { Rect = box, Height = height, Position = box.anchoredPosition });
+			}
+		}
+		return height;
+	}
+
+	private void LateUpdate()
+	{
+		if (_row == null)
+		{
+			return;
+		}
+		bool changed = false;
+		float rowHeight = RowHeight + Extra;
+		if (!Mathf.Approximately(_row.rect.height, rowHeight))
+		{
+			_row.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, rowHeight);
+			changed = true;
+		}
+		foreach (Part part in _parts)
+		{
+			// 不用加高时不碰子物体（不打断游戏自己的动画）；加高过又改回原样的，上面已经把这一行换回原高度，子物体这一帧换回原样
+			if (part.Rect == null || (Extra <= 0f && !changed))
+			{
+				continue;
+			}
+			float height = part.Height + Extra;
+			Vector2 position = part.Position - new Vector2(0f, (1f - part.Rect.pivot.y) * Extra);
+			if (!Mathf.Approximately(part.Rect.rect.height, height))
+			{
+				part.Rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+			}
+			if (part.Rect.anchoredPosition.y != position.y)
+			{
+				part.Rect.anchoredPosition = new Vector2(part.Rect.anchoredPosition.x, position.y);
+			}
+		}
+		if (changed && _row.parent is RectTransform parent)
+		{
+			LayoutRebuilder.MarkLayoutForRebuild(parent);
+		}
 	}
 }
 

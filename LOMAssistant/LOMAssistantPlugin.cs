@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace LOMAssistant;
 
-[BepInPlugin("LOMAssistant", "咖啡伴侣", "3.3.3")]
+[BepInPlugin("LOMAssistant", "咖啡伴侣", "3.7.0")]
 public class LOMAssistantPlugin : BaseUnityPlugin
 {
 	private Harmony _harmony;
@@ -37,6 +37,7 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 		Diagnostics.LogStartup(base.Info);
 		_harmony = new Harmony(base.Info.Metadata.GUID);
 		Diagnostics.PatchSteam(_harmony);
+		ModScripts.Prepare();
 		ApplyPatches();
 		BepInEx5Plugins.Load();
 		Diagnostics.LogPatchSummary(_harmony);
@@ -112,46 +113,38 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 		{
 			// 记下现在的剧本和选项菜单：「此刻」页等要用，关掉选项提示也照样记
 			TryPatchAll(typeof(OptionTracking));
-			if (ConfigManager.EnableOptionInfo.Value)
+			// 下面这些功能的补丁一直打着，每次用到时看设置开没开，在设置页改了马上生效，不用重启
+			TryPatchAll(typeof(OptionInfoPatch));
+			if (StoryLogCompat.Available)
 			{
-				TryPatchAll(typeof(OptionInfoPatch));
-				TryPatchAll(typeof(DeltaColorFit));
-				OptionHoverHint.Ensure(base.gameObject);
-				LogInfo("选项信息补丁已应用。");
+				TryPatchAll(typeof(StoryLogEntryPatch));
 			}
-			if (ConfigManager.EnableManualDiceSelection.Value)
-			{
-				TryPatchAll(typeof(DiceManualSelectionPatch));
-				LogInfo("骰子手动选择补丁已应用。");
-				EnsurePatched("Roll", AccessTools.Method(typeof(DiceMenuDialog), "Roll"), "Roll_Prefix");
-				EnsurePatched("CheckRevolution", AccessTools.Method(typeof(DiceMenuDialog), "CheckRevolution"), "CheckRevolution_Prefix");
-			}
-			if (ConfigManager.EnableLibraryDisplay.Value > 0)
-			{
-				TryPatchAll(typeof(LibraryDisplayPatch));
-				base.gameObject.AddComponent<LibraryHoverHint>();
-				LogInfo("讲经堂显示补丁已应用。");
-			}
-			if (ConfigManager.EnableCombatAssist.Value)
-			{
-				TryPatchAll(typeof(CombatAssistPatch));
-				LogInfo("战斗辅助补丁已应用。");
-			}
-			if (ConfigManager.EnableSkipAction.Value)
-			{
-				TryPatchAll(typeof(SkipActionPatch));
-				LogInfo("空过补丁已应用。");
-			}
-			if (ConfigManager.EnableBattleWin.Value)
-			{
-				TryPatchAll(typeof(BattleWinPatch));
-				LogInfo("团战直接获胜补丁已应用。");
-			}
-			// 团战开打、结束写进 Mod 日志（只记录，不改游戏）
+			TryPatchAll(typeof(DeltaColorFit));
+			TryPatchAll(typeof(OptionNoteLayout));
+			OptionHoverHint.Ensure(base.gameObject);
+			LogInfo("选项信息补丁已应用。");
+			TryPatchAll(typeof(DiceManualSelectionPatch));
+			LogInfo("骰子手动选择补丁已应用。");
+			EnsurePatched("Roll", AccessTools.Method(typeof(DiceMenuDialog), "Roll"), "Roll_Prefix");
+			EnsurePatched("CheckRevolution", AccessTools.Method(typeof(DiceMenuDialog), "CheckRevolution"), "CheckRevolution_Prefix");
+			TryPatchAll(typeof(LibraryDisplayPatch));
+			base.gameObject.AddComponent<LibraryHoverHint>();
+			LogInfo("讲经堂显示补丁已应用。");
+			TryPatchAll(typeof(CombatAssistPatch));
+			LogInfo("战斗辅助补丁已应用。");
+			TryPatchAll(typeof(SkipActionPatch));
+			LogInfo("空过补丁已应用。");
+			TryPatchAll(typeof(BattleWinPatch));
+			LogInfo("战役直接获胜补丁已应用。");
+			ConfigManager.EnableSkipAction.OnValueChanged += SkipActionPatch.SettingChanged;
+			ConfigManager.EnableBattleWin.OnValueChanged += BattleWinPatch.SettingChanged;
+			ConfigManager.EnableCombatAssist.OnValueChanged += CombatAssistPatch.SettingChanged;
+			// 战役开打、结束写进 Mod 日志（只记录，不改游戏）
 			TryPatchAll(typeof(BattleLogPatch));
 			TryPatchAll(typeof(PinballScorePatch));
 			LogInfo("弹珠分数补丁已应用。");
 			TryPatchAll(typeof(TrainingCheatPatch));
+			TryPatchAll(typeof(ForgeSwapPatch));
 			TryPatchAll(typeof(ItemUsePatch));
 			if (base.gameObject.GetComponent<ModPanel>() == null)
 			{
@@ -161,6 +154,11 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			LogInfo("修炼/锻造/炼丹修改补丁已应用。");
 			TryPatchAll(typeof(DuelCheatPatch));
 			TryPatchAll(typeof(BattleCheatPatch));
+			TryPatchAll(typeof(BattleFeelPatch));
+			TryPatchAll(typeof(BattleCompanions));
+			TryPatchAll(typeof(DuelEnemyGrowth));
+			TryPatchAll(typeof(DuelEnemyTactics));
+			FightDeathHint.Ensure(base.gameObject);
 			TryPatchAll(typeof(DuelPacePatch));
 			DuelActionForecast.Ensure(base.gameObject);
 			TryPatchAll(typeof(DuelActionForecastPatch));
@@ -180,6 +178,7 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(AutoSaveHistoryPatch));
 			TryPatchAll(typeof(SaveDataCache));
 			TryPatchAll(typeof(SaveDataCache.GetSaveDataPatch));
+			TryPatchAll(typeof(SaveRowGuard));
 			TryPatchAll(typeof(StorySaveTimePatch));
 			StorySaveTimePatch.Install();
 			if (ConfigManager.EnableSaveBrowser.Value)
@@ -195,6 +194,14 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(OneClickUnlockPatch));
 			TryPatchAll(typeof(HiddenOptions));
 			TryPatchAll(typeof(LOMAssistant.Features.Extras.GameSpeedSayPatch));
+			try
+			{
+				LOMAssistant.Features.Extras.GameSpeedWriters.Patch(_harmony);
+			}
+			catch (Exception ex)
+			{
+				FileLogger.LogError("GameSpeedWriters 补丁应用失败: " + ex);
+			}
 			TryPatchAll(typeof(BranchOverride));
 			EventPicker.Ensure(base.gameObject);
 			UiHider.Ensure(base.gameObject);
@@ -203,7 +210,10 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			LOMAssistant.Features.Story.DeadlineReminder.Ensure(base.gameObject);
 			LOMAssistant.Features.Story.StoryJumpNote.Ensure(base.gameObject);
 			PositionOptionHints.Ensure(base.gameObject);
-		LOMAssistant.Features.Memo.MemoPanel.Ensure(base.gameObject);
+			LOMAssistant.Features.Memo.MemoPanel.Ensure(base.gameObject);
+			// 主动陪玩：几处只读的钩子（决斗和战役胜负、剧情记录、插画）和画面上的小伙伴
+			TryPatchAll(typeof(LOMAssistant.Features.Ai.AiCompanionPatches));
+			LOMAssistant.Features.Ai.CompanionPet.Ensure(base.gameObject);
 			TryPatchAll(typeof(MapEventHints));
 			TryPatchAll(typeof(StatLimitPatch));
 			TryPatchAll(typeof(TitlePatch));
@@ -221,6 +231,8 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			LeanTweenGuard.Install();
 			TryPatchAll(typeof(ReadStoryKeeper));
 			TryPatchAll(typeof(TitlePartnerPatch));
+			LOMAssistant.Features.Extras.Gallery.Ensure(base.gameObject);
+			TryPatchAll(typeof(LOMAssistant.Features.Extras.GalleryPatch));
 			TryPatchAll(typeof(SettingsDiagnosticsButton));
 			TryPatchAll(typeof(InputGuardActionGate));
 			TryPatchAll(typeof(InputGuardDialogGate));

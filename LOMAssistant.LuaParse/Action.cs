@@ -12,9 +12,22 @@ public class Action
 
 	public int BranchIndex { get; set; }
 
+	/// <summary>所在分支属于哪个分支判断（checkpointmanager.Switch 的检查点名）；认不出来是空的。</summary>
+	public string Checkpoint { get; set; } = "";
+
+	/// <summary>分支判断的第几支（Switch 的结果值），0 是 else；认不出来是 -1。</summary>
+	public int Arm { get; set; } = -1;
+
 	public string Content { get; set; }
 
 	public string Description { get; private set; }
+
+	/// <summary>能累加的效果是哪个动作加到哪个目标上；其他效果是 null。</summary>
+	internal string Key { get; private set; }
+
+	private string _op, _id, _label, _mode = "";
+
+	private int _amount;
 
 	public Action(ActionType type, string content, bool isConditional = false, int branchIndex = 0)
 	{
@@ -56,6 +69,7 @@ public class Action
 			return string.Empty;
 		}
 		string text = array[0];
+		string id = text;
 		string text2;
 		if (actionType != null)
 		{
@@ -114,9 +128,24 @@ public class Action
 		}
 		if (!int.TryParse(array[1], out var result2))
 		{
-			return string.Empty;
+			// 剧本里传的是变量，运行时才知道多少
+			return actionType == "Player" ? text + " 数值不定" : string.Empty;
 		}
-		return GetDescription(actionType, text, result2);
+		_op = actionType;
+		_id = id;
+		_label = text;
+		_amount = result2;
+		_mode = actionType == "Player" && array.Length > 2 ? array[2] : "";
+		if (actionType is "Player" or "Character" or "ModifyEnemyTeam" or "AddFlag" or "AddMisc" or "AddSpecial" or "AddBook")
+		{
+			Key = actionType + ":" + id;
+		}
+		return _mode switch
+		{
+			"center" => text + " ±" + System.Math.Abs(result2) + "（向 50 靠拢）",
+			"mental" => GetDescription(actionType, text, result2) + "（心相 ≤20 时少 1）",
+			_ => GetDescription(actionType, text, result2),
+		};
 		IL_01dd:
 		if (!(actionType == "UpdateSetPlayerStat"))
 		{
@@ -187,6 +216,47 @@ public class Action
 			text2 = DataHelper.GetTalentName(text);
 		}
 		goto IL_0218;
+	}
+
+	/// <summary>
+	/// 这一条在当前数值下实际改多少，算法和游戏 StatModifyManager 相同：center 向 50 靠拢，mental 在心相 ≤20 时少 1，好感不超出上下限。
+	/// before 给出同一路径上前面的效果已经加到某个数值上的量。需要存档数值却拿不到时返回 null。
+	/// </summary>
+	internal int? Actual(System.Func<string, int> before)
+	{
+		PlayerStatManagerData data = PlayerStatManagerData.Instance;
+		if (_op == "Character")
+		{
+			RelationshipStat character = DataHelper.TryParseEnum<RelationshipStatType>(_id, out var who) ? data?.Relationships?.Get(who) : null;
+			if (character == null)
+			{
+				return _amount;
+			}
+			int now = character.Value + before(Key);
+			return System.Math.Max(0, System.Math.Min(now + _amount, character.GetFieldValue<int>("_max"))) - now;
+		}
+		if (_mode != "center" && _mode != "mental")
+		{
+			return _amount;
+		}
+		GameStat stat = DataHelper.TryParseEnum<GameStatType>(_id, out var type) ? data?.Stats?.Get(type) : null;
+		if (stat == null)
+		{
+			return null;
+		}
+		if (_mode == "center")
+		{
+			int gap = 50 - (stat.FinalValue + before(Key));
+			return System.Math.Abs(System.Math.Min(System.Math.Abs(gap), _amount)) * System.Math.Sign(gap);
+		}
+		return data.Stats.Get(GameStatType.心理衛生).FinalValue + before("Player:mental") <= 20 ? _amount - 1 : _amount;
+	}
+
+	/// <summary>用实际增量写效果说明。增量为 0 时不上色。</summary>
+	internal string Shown(int value)
+	{
+		string text = GetDescription(_op, _label, value);
+		return value == 0 ? RichText.Strip(text) : text;
 	}
 
 	private string GetDescription(string actionType, string id, int value)

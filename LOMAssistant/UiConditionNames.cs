@@ -1,3 +1,7 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
 namespace LOMAssistant;
 
 /// <summary>
@@ -8,9 +12,91 @@ namespace LOMAssistant;
 /// </summary>
 internal static class UiConditionNames
 {
+	// 原资料没有备注的条件变量；保留类型前缀，避免同编号的时间变量和旗标混用。
+	public static readonly Dictionary<string, string> Descriptions = new Dictionary<string, string>
+	{
+		{ "时间_M7001_01", "围攻唐门的预定时点 (M7001_01)" },
+		{ "时间_M7002_01", "东西武林盟的预定时点 (M7002_01)" },
+		{ "时间_M7005", "最后一夜感情事件的预定时点 (M7005)" },
+		{ "时间_S0018_02", "传奇铁匠后续的预定时点 (S0018_02)" },
+		{ "时间_S0101_01", "假赵活风声事件处理一个月后 (S0101_01)" },
+		{ "时间_S0102_01", "上官萤澄清假赵活事件一个月后 (S0102_01)" },
+		{ "时间_S0106_01", "假赵活事件处理一旬后 (S0106_01)" },
+		{ "时间_S0200_01", "叶家兄妹留宿一旬后 (S0200_01)" },
+		{ "时间_S0202_01", "叶家兄妹留宿一个月后 (S0202_01)" },
+		{ "时间_S0202_02", "叶家兄妹出游后续的预定时点 (S0202_02)" },
+		{ "时间_S0203_01", "叶云舟清扫谈话的预定时点 (S0203_01)" },
+		{ "时间_S2901_01", "郁竹回家的预定时点 (S2901_01)" },
+		{ "时间_S2902_01", "好多钱事件的预定时点 (S2902_01)" },
+		{ "时间_S2912_01", "郁竹铸神雷剑一旬后 (S2912_01)" },
+		{ "时间_S3002_01", "青城排挤事件两旬后 (S3002_01)" },
+		{ "时间_Back_Work_E_01", "叶云舟搬柴事件的起算时点 (Back_Work_E_01)" },
+		{ "时间_Kitchen_Special_01", "决战前伙房特殊事件的起算时点 (Kitchen_Special_01)" },
+		{ "数值_Ch_3_6_4_3_001", "学问与战术的合计判定值 (Ch_3_6_4_3_001)" },
+	};
+
+	// 旗标说明与数值页共用一张表；条件继续保留变量编号，不把译文用于判定。
+	static UiConditionNames()
+	{
+		var flags = new List<string[]>();
+		foreach (var pair in UiFlagNames.Descriptions)
+		{
+			// 游戏的条件变量叫 TalkOption_01，实际旗标叫 Talk_Option_01。
+			string id = pair.Key.StartsWith("Talk_Option_") ? pair.Key.Replace("Talk_Option_", "TalkOption_") : pair.Key;
+			string suffix = " (" + id + ")";
+			Descriptions["旗标_" + id] = pair.Value[0] + suffix;
+			flags.Add(pair.Value.Select(text => text == null ? null : text + suffix).ToArray());
+		}
+		Table = flags.Concat(Table).ToArray();
+	}
+
+	// 旧条件文字缓存里没有类型前缀；仅补条件位置的编号，不改剧本名、存档或判定数据。
+	// 时间编号只在「目前时间」的右侧识别，避免与同名旗标混用；已有「说明 (编号)」不再补。
+	private static readonly Regex BareCondition = new Regex(
+		@"(?<time>(?:目前时间|目前時間)(?:\s+需)?\s*(?:>=|<=|!=|=|>|<|≥|≤|≠)\s*)(?<id>[A-Za-z][A-Za-z0-9_]*)(?=$|\s|[<；）)])|(?<=^|\s|；|（|\(|>)(?<id>[A-Za-z][A-Za-z0-9_]*)(?=\s*(?:需)?(?:>=|<=|!=|=|>|<|≥|≤|≠))");
+
+	private static readonly char[] Comparisons = { '=', '<', '>', '≥', '≤', '≠' };
+	private static readonly Dictionary<string, string> Described = new Dictionary<string, string>();
+
+	// 界面上每段文字画之前都会经过这里（ForDisplay）：没有比较符号的直接原样返回，算过的记下来，不每帧跑正则
+	public static string Describe(string text)
+	{
+		if (string.IsNullOrEmpty(text) || text.IndexOfAny(Comparisons) < 0) return text;
+		if (Described.TryGetValue(text, out string done)) return done;
+		if (Described.Count >= 20000) Described.Clear();
+		return Described[text] = BareCondition.Replace(text, match =>
+		{
+			string id = match.Groups["id"].Value;
+			string time = match.Groups["time"].Value;
+			if (Descriptions.TryGetValue((time.Length > 0 ? "时间_" : "旗标_") + id, out string description)) return time + description;
+			if (time.Length == 0 && Descriptions.TryGetValue("数值_" + id, out description)) return description;
+			return match.Value;
+		});
+	}
+
 	// 中文（简体）、韩语、日语、英语；缺少译文填 null，不借用其他语言。
 	public static readonly string[][] Table =
 	{
+		new[] { "围攻唐门的预定时点 (M7001_01)", "당문 포위 공격 예정 시점 (M7001_01)", "唐門包囲攻撃の予定時点 (M7001_01)", "Scheduled time of the Tang Clan siege (M7001_01)" },
+		new[] { "东西武林盟的预定时点 (M7002_01)", "동서 무림맹 예정 시점 (M7002_01)", "東西武林盟の予定時点 (M7002_01)", "Scheduled time of the east-west martial alliance event (M7002_01)" },
+		new[] { "最后一夜感情事件的预定时点 (M7005)", "마지막 밤 연애 사건 예정 시점 (M7005)", "最後の夜の恋愛イベント予定時点 (M7005)", "Scheduled time of the last-night romance event (M7005)" },
+		new[] { "传奇铁匠后续的预定时点 (S0018_02)", "전설의 대장장이 후속 예정 시점 (S0018_02)", "伝説の鍛冶師の続きの予定時点 (S0018_02)", "Scheduled follow-up to the legendary blacksmith (S0018_02)" },
+		new[] { "假赵活风声事件处理一个月后 (S0101_01)", "가짜 조활 소문 사건 처리 한 달 뒤 (S0101_01)", "偽の趙活の噂の事件から一か月後 (S0101_01)", "One month after the impostor Zhao Huo rumor event (S0101_01)" },
+		new[] { "上官萤澄清假赵活事件一个月后 (S0102_01)", "상관형이 가짜 조활 사건을 해명한 한 달 뒤 (S0102_01)", "上官螢の偽の趙活事件の弁明から一か月後 (S0102_01)", "One month after Shangguan Ying clarifies the impostor incident (S0102_01)" },
+		new[] { "假赵活事件处理一旬后 (S0106_01)", "가짜 조활 사건 처리 한 순 뒤 (S0106_01)", "偽の趙活事件の処理から一旬後 (S0106_01)", "One ten-day period after the impostor incident is resolved (S0106_01)" },
+		new[] { "叶家兄妹留宿一旬后 (S0200_01)", "엽씨 남매가 당문에 머문 한 순 뒤 (S0200_01)", "葉家の兄妹の滞在開始から一旬後 (S0200_01)", "One ten-day period after the Ye siblings start staying at Tang Clan (S0200_01)" },
+		new[] { "叶家兄妹留宿一个月后 (S0202_01)", "엽씨 남매가 당문에 머문 한 달 뒤 (S0202_01)", "葉家の兄妹の滞在開始から一か月後 (S0202_01)", "One month after the Ye siblings start staying at Tang Clan (S0202_01)" },
+		new[] { "叶家兄妹出游后续的预定时点 (S0202_02)", "엽씨 남매 외출 후속 예정 시점 (S0202_02)", "葉家の兄妹の外出後の予定時点 (S0202_02)", "Scheduled follow-up to the Ye siblings outing (S0202_02)" },
+		new[] { "叶云舟清扫谈话的预定时点 (S0203_01)", "엽운주와 청소 중 대화 예정 시점 (S0203_01)", "葉雲舟との掃除中の会話予定時点 (S0203_01)", "Scheduled cleaning conversation with Ye Yunzhou (S0203_01)" },
+		new[] { "郁竹回家的预定时点 (S2901_01)", "욱죽 귀가 예정 시점 (S2901_01)", "郁竹の帰宅予定時点 (S2901_01)", "Scheduled time of Yu Zhu's return home (S2901_01)" },
+		new[] { "好多钱事件的预定时点 (S2902_01)", "돈이 잔뜩 사건 예정 시점 (S2902_01)", "大金イベントの予定時点 (S2902_01)", "Scheduled time of the money event (S2902_01)" },
+		new[] { "郁竹铸神雷剑一旬后 (S2912_01)", "욱죽이 신뢰검을 벼리기 시작한 한 순 뒤 (S2912_01)", "郁竹の神雷剣鍛造開始から一旬後 (S2912_01)", "One ten-day period after Yu Zhu begins forging the Divine Thunder Sword (S2912_01)" },
+		new[] { "青城排挤事件两旬后 (S3002_01)", "청성 따돌림 사건 두 순 뒤 (S3002_01)", "青城の仲間外れイベントから二旬後 (S3002_01)", "Two ten-day periods after the Qingcheng ostracism event (S3002_01)" },
+		new[] { "叶云舟搬柴事件的起算时点 (Back_Work_E_01)", "엽운주 땔감 나르기 사건 기준 시점 (Back_Work_E_01)", "葉雲舟との薪運びイベントの基準時点 (Back_Work_E_01)", "Reference time for the firewood event with Ye Yunzhou (Back_Work_E_01)" },
+		new[] { "决战前伙房特殊事件的起算时点 (Kitchen_Special_01)", "결전 전 부엌 특별 사건 기준 시점 (Kitchen_Special_01)", "決戦前の厨房特別イベントの基準時点 (Kitchen_Special_01)", "Reference time for the kitchen event before the final battle (Kitchen_Special_01)" },
+		new[] { "学问与战术的合计判定值 (Ch_3_6_4_3_001)", "학문·전술 합산 판정값 (Ch_3_6_4_3_001)", "学問と戦術の合計判定値 (Ch_3_6_4_3_001)", "Combined knowledge and tactics check value (Ch_3_6_4_3_001)" },
+		new[] { "秘笈等级_十八种奇兵锻法", "「십팔종·기병단법잡기」 비급 등급", null, null },
+		new[] { "贵重品_逆鳞宝衣", "역린보의 보유 수량", null, null },
 		new[] { "道德", "도덕", "道徳", null },
 		new[] { "心上人", "마음에 둔 사람", "想い人", "Love interest" },
 		new[] { "性情", "성정", "性情", null },
@@ -18,7 +104,8 @@ internal static class UiConditionNames
 		new[] { "嘴力", "구력", "弁舌", null },
 		new[] { "处世", "처세", "処世", null },
 		new[] { "银两", "은자", "銀両", null },
-		new[] { "目前时间", "현재 시점", "現在の時期", null },
+		new[] { "目前时间", "현재 시점", "現在の時期", "Current time" },
+		new[] { "时间_目前时间", "현재 시점", "現在の時期", "Current time" },
 		new[] { "修养", "수양", "品性", null },
 		new[] { "好感度_小师妹", "소사매 호감도", "小師妹の好感度", null },
 		new[] { "技能_医术", "기능 「의술」", "技能「医術」", null },
@@ -37,11 +124,11 @@ internal static class UiConditionNames
 		new[] { "好感度_龙湘", "용상 호감도", "龍湘の好感度", null },
 		new[] { "贡献度", "공헌도", "貢献度", null },
 		new[] { "好感度_南宫浅", "남궁천 호감도", "南宮淺の好感度", null },
-		new[] { "全毒药点数", "연단 점수 합계", "毒薬の合計", null },
+		new[] { "全毒药点数", "연단 점수 합계", "毒薬の合計", "Total poison points" },
 		new[] { "好感度_樊啸天", "번소천 호감도", "樊嘯天の好感度", null },
 		new[] { "好感度_四师兄", "사사형 호감도", "四師兄の好感度", null },
 		new[] { "技能_佛学", "기능 「불학」", "技能「仏学」", null },
-		new[] { "阴阳内功", "음양", "陰陽", null },
+		new[] { "阴阳内功", "음양", "陰陽", "Yin-Yang inner arts" },
 		new[] { "好感度_魏菊", "위국 호감도", "魏菊の好感度", null },
 		new[] { "贵重品_持有江湖快报", "강호쾌보 보유 수량", "江湖速報（いずれか）の所持数", null },
 		new[] { "内力", "내력", "内力", null },
@@ -59,31 +146,31 @@ internal static class UiConditionNames
 		new[] { "好感度_刘颚", "유악 호감도", "劉顎の好感度", null },
 		new[] { "行动次数", "행동력", "行動回数", null },
 		new[] { "体力", "체력", "体力", null },
-		new[] { "随机值_0_100", "난수(0–100)", "乱数(0〜100)", null },
+		new[] { "随机值_0_100", "난수(0–100)", "乱数(0〜100)", "Random value (0-100)" },
 		new[] { "全锻造点数", "단조 점수 합계", "鍛造の合計", null },
 		new[] { "技能_道学", "기능 「도학」", "技能「道学」", null },
 		new[] { "技能_经脉闭塞", "기능 「경맥폐색」", "技能「経脈閉塞」", null },
 		new[] { "好感度_李富贵", "이부귀 호감도", "李富貴の好感度", null },
-		new[] { "成就_30000", "업적 30000", "実績「定めの数」", null },
-		new[] { "武林盟_向心力", "무림맹 단합", "武林盟の団結", null },
+		new[] { "成就_30000", "업적 30000", "実績「定めの数」", "Achievement: Numbered Fate" },
+		new[] { "武林盟_向心力", "무림맹 단합", "武林盟の団結", "Wulin Alliance cohesion" },
 		new[] { "好感度_最高唐门师兄", "당문 사형들의 호감도 중 최댓값", "唐門の師兄で最高の好感度", null },
 		new[] { "轻功", "경공", "軽功", null },
 		new[] { "技能_寂灭三摩地", "기능 「적멸삼마지」", "技能「寂滅三摩地」", null },
 		new[] { "技能_失魂落魄", "기능 「실혼낙백」", "技能「失魂落魄」", null },
-		new[] { "随机值_0_30", "난수(0–30)", "乱数(0〜30)", null },
+		new[] { "随机值_0_30", "난수(0–30)", "乱数(0〜30)", "Random (0–30)" },
 		new[] { "好感度_夏侯兰", "하후란 호감도", "夏侯蘭の好感度", null },
 		new[] { "技能_铁琵琶功", "기능 「철비파공」", "技能「鉄琵琶功」", null },
 		new[] { "好感度_解无尘", "해무진 호감도", "解無塵の好感度", null },
 		new[] { "贵重品_连环火箭", "연환화전 보유 수량", "連環火矢の所持数", null },
 		new[] { "好感度_掌门人", "장문인 호감도", "掌門の好感度", null },
 		new[] { "技能_任何音波功", "음파공 등급 합계", "技能「音波功（いずれか）」", null },
-		new[] { "成就_30020", "업적 30020", "実績「折梅手」", null },
+		new[] { "成就_30020", "업적 30020", "実績「折梅手」", "Achievement: Plum Blossom Breaker" },
 		new[] { "书籍_历战血书", "역전혈서 보유 수량", "歴戦血書の所持数", null },
-		new[] { "Max_道德_性情_命运x20", "도덕·성정·운명×20 중 최댓값", "道徳・性情・運命×20の最大値", null },
+		new[] { "Max_道德_性情_命运x20", "도덕·성정·운명×20 중 최댓값", "道徳・性情・運命×20の最大値", "Highest of Morality, Temperament, Fate×20" },
 		new[] { "秘笈等级_无影爪", "「무영조」 비급 등급", "「無影爪」の秘笈レベル", null },
 		new[] { "好感度_崆峒四姝", "공동사주 호감도", "崆峒四姝の好感度", null },
-		new[] { "已开发项目_万灵油", "만령유 개발 완료", "開発済み「万霊油」", null },
-		new[] { "丐帮_向心力", "개방 단합", "丐幇の団結", null },
+		new[] { "已开发项目_万灵油", "만령유 개발 완료", "開発済み「万霊油」", "Panacea Oil developed" },
+		new[] { "丐帮_向心力", "개방 단합", "丐幇の団結", "Beggar Sect cohesion" },
 		new[] { "好感度_龙渊", "용연 호감도", "龍淵の好感度", null },
 		new[] { "技能_南宫护心诀", "기능 「남궁호심결」", "技能「南宮護心訣」", null },
 		new[] { "书籍_很是用力踢", "매우·힘껏차기 보유 수량", "つよつよ蹴りの所持数", null },
@@ -101,7 +188,7 @@ internal static class UiConditionNames
 		new[] { "秘笈等级_飞天脚", "「비천각」 비급 등급", "「飛天腳」の秘笈レベル", null },
 		new[] { "技能_思想战", "기능 「사상전」", "技能「思想戦」", null },
 		new[] { "暗器", "암기", "暗器", "Hidden weapon" },
-		new[] { "棋力", "기력", "棋力", null },
+		new[] { "棋力", "기력", "棋力", "Chess skill" },
 		new[] { "技能_自恋", "기능 「자아도취」", "技能「自惚れ」", null },
 		new[] { "技能_核枣钉", "기능 「핵조정」", "技能「棗種矢」", null },
 		new[] { "技能_大焦热神功", "기능 「대초열신공」", "技能「大焦熱神功」", null },
@@ -112,14 +199,14 @@ internal static class UiConditionNames
 		new[] { "秘笈等级_唐门暗器总纲", "「당문암기총강」 비급 등급", "「唐門暗器総綱」の秘笈レベル", null },
 		new[] { "杂物_峨嵋雪芽", "아미설아 보유 수량", "峨嵋雪芽の所持数", null },
 		new[] { "杂物_羊羔酒", "양고주 보유 수량", "羊羔酒の所持数", null },
-		new[] { "抗毒_抗麻", "항독·항마", "対毒・対麻痺", null },
+		new[] { "抗毒_抗麻", "항독·항마", "対毒・対麻痺", "Poison / Paralysis resistance" },
 		new[] { "贵重品_唐门传承小剑", "당문전승소검 보유 수량", "唐門伝承短剣の所持数", null },
 		new[] { "技能_佛学_道学", "기능 「불학·도학」", "技能「仏学・道学」", null },
 		new[] { "刀剑", "도검", "刀剣", null },
 		new[] { "技能_同舟剑法", "기능 「동주검법」", "技能「同舟剣法」", null },
 		new[] { "技能_点破云关", "기능 「점파운관」", "技能「点破雲関」", null },
-		new[] { "成就_30021", "업적 30021", "実績「一家之主」", null },
-		new[] { "体力_轻功", "체력·경공", "体力・軽功", null },
+		new[] { "成就_30021", "업적 30021", "実績「一家之主」", "Achievement: Head of the Family" },
+		new[] { "体力_轻功", "체력·경공", "体力・軽功", "Constitution / Agility" },
 		new[] { "杂物_听云木剑", "청운목검 보유 수량", "聴雲木剣の所持数", null },
 		new[] { "杂物_木剑", "목검 보유 수량", "木剣の所持数", null },
 		new[] { "开发项目等级_乌蚕宝衣", "오잠보의 개발 등급", "「烏蚕の宝衣」の開発レベル", null },
@@ -129,13 +216,13 @@ internal static class UiConditionNames
 		new[] { "书籍_少林金钟罩", "소림금종조 보유 수량", "少林金鐘罩の所持数", null },
 		new[] { "书籍_点苍剑谱", "점창검보 보유 수량", "点蒼剣譜の所持数", null },
 		new[] { "书籍_五毒秘录", "오독비록 보유 수량", "五毒秘録の所持数", null },
-		new[] { "命运x20", "운명×20", "運命×20", null },
-		new[] { "随机值_0_40", "난수(0–40)", "乱数(0〜40)", null },
+		new[] { "命运x20", "운명×20", "運命×20", "Fate ×20" },
+		new[] { "随机值_0_40", "난수(0–40)", "乱数(0〜40)", "Random (0–40)" },
 		new[] { "书籍_天师剑法", "천사검법 보유 수량", "天師剣法の所持数", null },
 		new[] { "杂物_狼毒散", "낭독산 보유 수량", "狼毒散の所持数", null },
 		new[] { "技能_白鲨语", "기능 「백사어」", "技能「白鮫語」", null },
-		new[] { "丐帮谈判", "개방과의 협상", "丐幇との交渉", null },
-		new[] { "赎回任何资产", "자산을 하나 이상 되찾음", "資産（いずれか）を買い戻した", null },
+		new[] { "丐帮谈判", "개방과의 협상", "丐幇との交渉", "Negotiating with the Beggar Sect" },
+		new[] { "赎回任何资产", "자산을 하나 이상 되찾음", "資産（いずれか）を買い戻した", "Redeemed any asset" },
 		new[] { "与飞石帮进入交战 (交戰門派)", "교전 중인 문파 수", "交戦中の門派数", "Number of sects at war with you" },
 		new[] { "贵重品_切鱼刀", "생선칼 보유 수량", "魚切り包丁の所持数", null },
 		new[] { "全贡献度", "공헌도 합계", "貢献度の合計", null },
@@ -143,8 +230,8 @@ internal static class UiConditionNames
 		new[] { "贵重品_叫化鸡食谱", "거지닭 요리법 보유 수량", "叫化鶏食譜の所持数", null },
 		new[] { "书籍_本草纲目", "본초강목 보유 수량", "本草綱目の所持数", null },
 		new[] { "杂物_接骨草", "접골초 보유 수량", "接骨草の所持数", null },
-		new[] { "随机值_0_50", "난수(0–50)", "乱数(0〜50)", null },
-		new[] { "轻功_暗器", "경공·암기", "軽功・暗器", null },
+		new[] { "随机值_0_50", "난수(0–50)", "乱数(0〜50)", "Random (0–50)" },
+		new[] { "轻功_暗器", "경공·암기", "軽功・暗器", "Agility / Hidden weapon" },
 		new[] { "贵重品_大师兄涂鸦", "대사형의 낙서 보유 수량", "大師兄の落書きの所持数", null },
 		new[] { "技能_石灰粉", "기능 「석회분」", "技能「石灰粉」", null },
 		new[] { "技能_粹毒", "기능 「수독」", "技能「粋毒」", null },
@@ -154,13 +241,13 @@ internal static class UiConditionNames
 		new[] { "书籍_夺魄幽灵爪", "탈백유령조 보유 수량", "奪魄幽霊爪の所持数", null },
 		new[] { "好感度_李富贵_樊啸天", "이부귀·번소천 호감도", "李富貴・樊嘯天の好感度", null },
 		new[] { "贵重品_密密缝", "밀밀봉 보유 수량", "密密縫の所持数", null },
-		new[] { "已开发项目_回梦仙香", "회몽선향 개발 완료", "開発済み「回夢仙香」", null },
+		new[] { "已开发项目_回梦仙香", "회몽선향 개발 완료", "開発済み「回夢仙香」", "Dream Return Incense developed" },
 		new[] { "书籍_手抄仙鹤迷踪拳", "필사본·선학미종권 보유 수량", "手写しの仙鶴迷蹤拳の所持数", null },
 		new[] { "好感度_刘颚_赵逵_车轩辕_王二壮_最高", "유악·조규·차헌원·왕이장 중 최고 호감도", "劉顎・趙逵・車軒轅・王二壮の好感度（最高）", null },
 		new[] { "贵重品_发簪", "비녀 보유 수량", "髪簪の所持数", null },
 		new[] { "技能_形意拳", "기능 「형의권」", "技能「形意拳」", null },
-		new[] { "已开发项目_乖乖水", "순종수 개발 완료", "開発済み「乖乖水」", null },
-		new[] { "南宫世家_锦香宫_上官世家", "남궁세가·금향궁·상관세가", "南宮世家・錦香宮・上官世家", null },
+		new[] { "已开发项目_乖乖水", "순종수 개발 완료", "開発済み「乖乖水」", "Obedience Water developed" },
+		new[] { "南宫世家_锦香宫_上官世家", "남궁세가·금향궁·상관세가", "南宮世家・錦香宮・上官世家", "Nangong Family, Jinxiang Palace, Shangguan Family" },
 		new[] { "好感度_刘颚_赵逵_车轩辕_王二壮", "유악·조규·차헌원·왕이장 호감도", "劉顎・趙逵・車軒轅・王二壮の好感度", null },
 		new[] { "秘笈等级_玄烛心经", "「현촉심경」 비급 등급", "「玄燭心経」の秘笈レベル", null },
 		new[] { "攻略小师妹 (攻略人數_排除龍湘)", "공략 중인 인원 수(용상 제외)", "攻略人数（龍湘を除く）", "Characters being romanced (excluding Long Xiang)" },
@@ -169,7 +256,7 @@ internal static class UiConditionNames
 		new[] { "攻略小梅 (攻略人數_梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국)", "攻略人数（梅・竹・菊）", "Characters being romanced (Yu Xiaomei, Yu Zhu, Wei Ju)" },
 		new[] { "杂物_猴儿酒", "후아주 보유 수량", "猿酒の所持数", null },
 		new[] { "攻略小师妹 (攻略人數_三個高手_排除龍湘)", "공략 중인 인원 수(소사매·상관형·우소매·욱죽)", "攻略人数（小師妹・上官螢・虞小梅・郁竹）", "Characters being romanced (Little Junior Sister, Shangguan Ying, Yu Xiaomei, Yu Zhu)" },
-		new[] { "条件_没有攻略龙湘", "용상 미공략", "条件：龍湘を攻略していない", null },
+		new[] { "条件_没有攻略龙湘", "용상 미공략", "条件：龍湘を攻略していない", "Condition: Long Xiang not romanced" },
 		new[] { "杂物_金念珠", "금염주 보유 수량", "金の数珠の所持数", null },
 		new[] { "技能_翻浪刀法", "기능 「번랑도법」", "技能「翻浪刀法」", null },
 		new[] { "杂物_赵活磨喝乐", "조활 마갈락 보유 수량", "趙活磨喝楽の所持数", null },
@@ -180,13 +267,13 @@ internal static class UiConditionNames
 		new[] { "书籍_金刚腿", "금강퇴 보유 수량", "金剛腿の所持数", null },
 		new[] { "书籍_金钟罩", "금종조 보유 수량", "金鐘罩の所持数", null },
 		new[] { "秘笈等级_玄玄如意指", "「현현여의지」 비급 등급", "「玄玄如意指」の秘笈レベル", null },
-		new[] { "学问_厨艺", "학문·요리", "学問・料理", null },
+		new[] { "学问_厨艺", "학문·요리", "学問・料理", "Learning / Cooking" },
 		new[] { "攻略上官萤 (攻略人數_排除小師妹)", "공략 중인 인원 수(소사매·용상 제외)", "攻略人数（小師妹・龍湘を除く）", "Characters being romanced (excluding Little Junior Sister and Long Xiang)" },
 		new[] { "攻略小师妹 (攻略人數_排除梅竹菊)", "공략 중인 인원 수(우소매·욱죽·위국 제외)", "攻略人数（梅・竹・菊を除く）", "Characters being romanced (excluding Yu Xiaomei, Yu Zhu, Wei Ju)" },
 		new[] { "开发项目等级_沥泉小剑", "역천소검 개발 등급", "「瀝泉短剣」の開発レベル", null },
 		new[] { "技能_金钟罩", "기능 「금종조」", "技能「金鐘罩」", null },
 		new[] { "技能_九转轮回", "기능 「구전윤회」", "技能「九転輪廻」", null },
-		new[] { "成就_30016", "업적 30016", "実績「武林の伝説」", null },
+		new[] { "成就_30016", "업적 30016", "実績「武林の伝説」", "Achievement: Wulin Legend" },
 		new[] { "书籍_九转残篇", "구전잔편 보유 수량", "九転残篇の所持数", null },
 		new[] { "秘笈等级_枯荣神功上卷", "「고영신공·상권」 비급 등급", "「枯榮神功上巻」の秘笈レベル", null },
 		new[] { "技能_全真体操", "기능 「전진체조」", "技能「全真体操」", null },
@@ -198,7 +285,7 @@ internal static class UiConditionNames
 		new[] { "开发项目等级_唐门传承小剑", "당문전승소검 개발 등급", "「唐門伝承短剣」の開発レベル", null },
 		new[] { "贵重品_小竹按摩券", "욱죽 안마권 보유 수량", "郁竹の按摩券の所持数", null },
 		new[] { "杂物_任意饮食物品", "보유 음식물 총 수량", "飲食物（いずれか）の所持数", null },
-		new[] { "学问+嘴力", "학문+구력", "学問+弁舌", null },
+		new[] { "学问+嘴力", "학문+구력", "学問+弁舌", "Learning + Eloquence" },
 		new[] { "书籍_飞天脚", "비천각 보유 수량", "飛天腳の所持数", null },
 		new[] { "书籍_无影爪", "무영조 보유 수량", "無影爪の所持数", null },
 		new[] { "书籍_铁臂神拳", "철비신권 보유 수량", "鉄臂神拳の所持数", null },
@@ -223,15 +310,15 @@ internal static class UiConditionNames
 		new[] { "杂物_湘妃鱼糕", "상비어고 보유 수량", "湘妃魚糕の所持数", null },
 		new[] { "杂物_色纸", "색지 보유 수량", "色紙の所持数", null },
 		new[] { "杂物_任何木剑", "보유 목검류 총 수량", "木剣（いずれか）の所持数", null },
-		new[] { "拳掌", "권장", null, "Fist" },
+		new[] { "拳掌", "권장", "拳掌", "Fist" },
 		new[] { "技能_不坏金身", "기능 「불괴금신」", "技能「不壊金身」", null },
 		new[] { "技能_轻微骨裂", "기능 「미세 골절」", "技能「軽微な骨折」", "Skill: Minor Bone Fracture" },
-		new[] { "旗标收留小梅或小竹", "우소매 또는 욱죽을 받아들임", null, null },
-		new[] { "收留小梅 (收留小梅或小竹)", "우소매를 받아들임 (우소매 또는 욱죽)", null, null },
-		new[] { "条件_晚安且收留小梅", "「잘 자」 및 우소매를 받아들임", null, null },
-		new[] { "条件_心上人_小梅或小竹", "마음에 둔 사람이 우소매 또는 욱죽", null, null },
+		new[] { "旗标收留小梅或小竹", "우소매 또는 욱죽을 받아들임", "小梅または小竹を受け入れた", "Took in Xiao Mei or Xiao Zhu" },
+		new[] { "收留小梅 (收留小梅或小竹)", "우소매를 받아들임 (우소매 또는 욱죽)", "小梅を受け入れる (小梅または小竹を受け入れる)", "Take in Xiao Mei (take in Xiao Mei or Xiao Zhu)" },
+		new[] { "条件_晚安且收留小梅", "「잘 자」 및 우소매를 받아들임", "条件：「おやすみ」かつ小梅を受け入れた", "Condition: 「Good Night」 and took in Xiao Mei" },
+		new[] { "条件_心上人_小梅或小竹", "마음에 둔 사람이 우소매 또는 욱죽", "条件：想い人が小梅または小竹", "Condition: love interest is Xiao Mei or Xiao Zhu" },
 		new[] { "书籍_仙鹤迷踪拳", "선학미종권 보유 수량", "仙鶴迷踪拳の所持数", null },
-		new[] { "自己", "자신", null, "Self" },
+		new[] { "自己", "자신", "自分", "Self" },
 		new[] { "旗标攻略人数", "공략 중인 인원 수", "攻略人数", "Characters being romanced" },
 		new[] { "旗标攻略人数_排除梅", "공략 중인 인원 수(우소매 제외)", "攻略人数（小梅を除く）", "Characters being romanced (excluding Yu Xiaomei)" },
 		new[] { "旗标攻略人数_排除梅竹菊", "공략 중인 인원 수(우소매·욱죽·위국 제외)", "攻略人数（梅・竹・菊を除く）", "Characters being romanced (excluding Yu Xiaomei, Yu Zhu, Wei Ju)" },
@@ -242,6 +329,6 @@ internal static class UiConditionNames
 		new[] { "旗标交战门派", "교전 중인 문파 수", "交戦中の門派数", "Number of sects at war with you" },
 		new[] { "旗标交战门派_无飞石帮", "교전 중인 문파 수(비석방 제외)", "交戦中の門派数（飛石幇を除く）", "Number of sects at war with you (excluding the Flying Stone Gang)" },
 		new[] { "旗标六道总点数", "육도 점수 합계", "六道の合計点", "Six Paths total score" },
-		new[] { "旗标赎回任何资产", "자산을 하나 이상 되찾음", null, null },
+		new[] { "旗标赎回任何资产", "자산을 하나 이상 되찾음", "資産（いずれか）を買い戻した", "Redeemed any asset" },
 	};
 }

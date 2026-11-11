@@ -24,12 +24,22 @@ public sealed class StoryMission
 	public string Series = "";
 	public string SeriesTitle = "";
 	public bool Main;
+	/// <summary>地点直入剧情的只读索引，不是游戏注册的任务。</summary>
+	public bool PlaceEntry;
 	/// <summary>游戏数据里没启用、不会在地图上自己触发，只能由别的剧本直接接进来（襄阳行这类）。</summary>
 	public bool Inactive;
 	public string Desc = "";
 	public string Place = "";
+	public PositionType Position;
+	/// <summary>仅供剧情图合并相关入口；不改变游戏任务及其判定顺序。</summary>
+	public string FlowGroup = "";
+	/// <summary>同一旬由前段推进的主线入口，只供剧情图说明，不改变剧本归属。</summary>
+	public readonly List<StoryEntry> FlowEntries = new List<StoryEntry>();
 	/// <summary>触发时间，按旬计；任意时间、每月一次的为 null。</summary>
 	public int? From, To;
+	/// <summary>仅供列表、标题、路线布局和合并入口使用的日期范围；不改写跳剧情所用的原始时间。</summary>
+	public int? DisplayFrom, DisplayTo;
+	public bool Periodic, VariableTime;
 	public string When = "";
 	public string StartScript = "";
 	public ConditionResultItem[] Conditions = new ConditionResultItem[0];
@@ -42,18 +52,37 @@ public sealed class StoryMission
 	public List<StoryEntry> Entries = new List<StoryEntry>();
 	/// <summary>主线：剧本里明写的下一个主线任务（Mission("Main", …)），按日期往后的才算。</summary>
 	public List<string> Next = new List<string>();
+	/// <summary>路线图把一个主线任务按章节拆开时，后面几节各成一站：这些小站所属的任务；游戏数据里的任务是 null。</summary>
+	public StoryMission PartOf;
 	/// <summary>这个任务的剧本里第一条剧情记录，用作标题旁的一句话简介。</summary>
 	public string Summary = "";
+	public string Opening = "";
 
-	/// <summary>显示用的名字：任务说明，没有就用第一条剧情记录；主线再没有就按开始剧本写成「1-1」这样的章节号，最后才用编号。</summary>
-	public string Title => Desc.Length > 0 ? Desc : Summary.Length > 0 ? (Summary.Length > 16 ? Summary.Substring(0, 16) + "…" : Summary) : Main ? ChapterOf(StartScript) ?? Key : SeriesTitle;
+	/// <summary>优先任务说明和支线名称，缺名时沿用剧情记录或开场台词的简短摘要。</summary>
+	public string Title => Desc.Length > 0 ? Desc : !Main && SeriesTitle.Length > 0 && SeriesTitle != Series ? SeriesTitle
+		: Summary.Length > 0 ? (Summary.Length > 16 ? Summary.Substring(0, 16) + "…" : Summary) : Main ? ChapterOf(StartScript) ?? Key
+		: Opening.Length > 0 ? (Opening.Length > 16 ? Opening.Substring(0, 16) + "…" : Opening) : SeriesTitle;
+
+	/// <summary>
+	/// 路线图、剧情图的标题：游戏没给编号的主线任务（「西武林盟」「集思广益」这类），前面按开始剧本补上「第几章-第几节」；
+	/// 和名字之间用全角空格隔开，翻译时编号和任务名分开查表。
+	/// </summary>
+	public string NumberedTitle
+	{
+		get
+		{
+			string title = Title, number = Main && PartOf == null ? ChapterOf(StartScript) : null;
+			return number == null || title.StartsWith(number, StringComparison.Ordinal) || title.Length > 0 && char.IsDigit(title[0]) ? title : number + "　" + title;
+		}
+	}
 
 	private static readonly System.Text.RegularExpressions.Regex Chapter = new System.Text.RegularExpressions.Regex(@"^ch(\d+)_(\d+)");
 
-	private static string ChapterOf(string script)
+	/// <summary>剧本「ch7_5_…」的章节编号「7-5」；序章（ch0）写「序-5」。不是章节剧本返回 null。</summary>
+	public static string ChapterOf(string script)
 	{
 		var m = Chapter.Match(script ?? "");
-		return m.Success ? m.Groups[1].Value + "-" + m.Groups[2].Value : null;
+		return m.Success ? (m.Groups[1].Value == "0" ? "序" : m.Groups[1].Value) + "-" + m.Groups[2].Value : null;
 	}
 }
 
@@ -134,7 +163,7 @@ public static class StoryAtlas
 		var progress = SeriesProgress();
 		foreach (StoryMission mission in Missions)
 		{
-			var scripts = mission.Scripts.Select(StoryScripts.Get).Where(s => s != null).ToList();
+			var scripts = mission.Scripts.Select(n => mission.PlaceEntry ? StoryPlaces.View(StoryScripts.Get(n)) : StoryScripts.Get(n)).Where(s => s != null).ToList();
 			mission.Read = StoryScripts.ReadPercent(scripts.SelectMany(s => s.Lines));
 			mission.Visited = IsVisited(mission, scripts, visited, progress);
 		}
@@ -162,7 +191,7 @@ public static class StoryAtlas
 		{
 			return true;
 		}
-		return !mission.Main && !scripts.Any(s => s.Records.Count > 0) && progress.TryGetValue(mission.Series, out string current) && PassedInSeries(mission, current);
+		return !mission.Main && !mission.PlaceEntry && !scripts.Any(s => s.Records.Count > 0) && progress.TryGetValue(mission.Series, out string current) && PassedInSeries(mission, current);
 	}
 
 	// 这一局已经过了这一步：整组支线已 clear（做完最后一步，剧本里会把任务组设成 clear），或者进度已经走到组里排在它后面的那一步
@@ -178,11 +207,6 @@ public static class StoryAtlas
 	}
 
 	private static IEnumerator _steps;
-
-	// 回养成地图、开始新一旬的公共剧本（很多任务演完用 SetNextScript 接到这里）：和 ChangeScene("Free") 一样算回地图，
-	// 不再往下走。走进去的话，地图上之后演到的各种剧本都算成这个任务的，别的存档演过地图剧情就显示「这一局走过」
-	private static readonly System.Text.RegularExpressions.Regex MapStart =
-		new System.Text.RegularExpressions.Regex(@"^section_\d+_free_start_\d+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
 	public static void Start()
 	{
@@ -275,7 +299,7 @@ public static class StoryAtlas
 					continue;
 				}
 				names.Add(asset.name);
-				StoryScript script = StoryScripts.Parse(asset.name, asset.text);
+				StoryScript script = StoryScripts.Parse(asset.name, ModScripts.Text(asset.name) ?? asset.text);
 				StoryScripts.Remember(script);
 				parsed.Add(script);
 				Resources.UnloadAsset(asset);
@@ -286,6 +310,17 @@ public static class StoryAtlas
 				}
 			}
 			assets = null;
+			foreach (string name in ModScripts.Added(new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)))
+			{
+				string text = ModScripts.Text(name);
+				if (text != null)
+				{
+					names.Add(name);
+					StoryScript script = StoryScripts.Parse(name, text);
+					StoryScripts.Remember(script);
+					parsed.Add(script);
+				}
+			}
 			StoryScriptCache.Save(parsed);
 		}
 		yield return null;
@@ -328,7 +363,7 @@ public static class StoryAtlas
 			while (todo.Count > 0 && seen.Count < 400)
 			{
 				string name = todo.Dequeue();
-				if (seen.Contains(name) || (seen.Count > 0 && (starts.Contains(name) || MapStart.IsMatch(name))))
+				if (seen.Contains(name) || (seen.Count > 0 && (starts.Contains(name) || StoryPlaces.IsReturn(name) || StoryPlaces.Entries.Any(e => string.Equals(e.Script, name, StringComparison.OrdinalIgnoreCase)))))
 				{
 					continue;
 				}
@@ -340,9 +375,9 @@ public static class StoryAtlas
 				seen.Add(name);
 				foreach (StoryExit exit in script.Exits)
 				{
-					if (exit.Target.Length > 0)
+					if (StoryScripts.FlowTarget(exit).Length > 0 && !exit.ToMap && !exit.ToTitle && (exit.EventPool.Length == 0 || StoryScripts.Travels(exit)))
 					{
-						todo.Enqueue(exit.Target);
+						todo.Enqueue(StoryScripts.FlowTarget(exit));
 					}
 				}
 			}
@@ -387,7 +422,7 @@ public static class StoryAtlas
 		// 同一任务组编号开头、又没归到别的任务的剧本，也算这条支线的（台词搜索、读过多少、剧情图、走完接到的主线都算上）
 		foreach (StoryMission mission in Missions.Where(m => !m.Main && m.Series.Length > 0))
 		{
-			var extra = names.Where(n => n.StartsWith(mission.Series + "_", StringComparison.OrdinalIgnoreCase) && !owner.ContainsKey(n)).ToList();
+			var extra = names.Where(n => n.StartsWith(mission.Series + "_", StringComparison.OrdinalIgnoreCase) && !owner.ContainsKey(n) && !StoryPlaces.IsReturn(n)).ToList();
 			if (extra.Count == 0)
 			{
 				continue;
@@ -414,6 +449,8 @@ public static class StoryAtlas
 			mission.Visited = IsVisited(mission, all, visited, progress);
 		}
 
+		StoryPlaces.AddStories(Missions, owner);
+
 		// 剧本归属，以及别的任务接进来的地方（支线怎么进入）
 		Owner.Clear();
 		foreach (var pair in owner)
@@ -422,14 +459,14 @@ public static class StoryAtlas
 		}
 		foreach (var pair in owner)
 		{
-			StoryScript s = StoryScripts.Get(pair.Key);
+			StoryScript s = pair.Value.PlaceEntry ? StoryPlaces.View(StoryScripts.Get(pair.Key)) : StoryScripts.Get(pair.Key);
 			if (s == null)
 			{
 				continue;
 			}
 			foreach (StoryExit exit in s.Exits)
 			{
-				if (exit.Target.Length == 0 || !owner.TryGetValue(exit.Target, out StoryMission into) || into == pair.Value || into.Entries.Count >= 8
+				if (exit.Target.Length == 0 || !owner.TryGetValue(StoryScripts.FlowTarget(exit), out StoryMission into) || into == pair.Value || into.Entries.Count >= 8
 					|| into.Entries.Any(e => e.From == pair.Value && e.Script == pair.Key))
 				{
 					continue;
@@ -456,6 +493,7 @@ public static class StoryAtlas
 		{
 			m.Next = m.Next.Where(k => k != m.Key && mains.TryGetValue(k, out StoryMission t) && (m.From == null || t.From == null || t.From >= m.From)).ToList();
 		}
+		SetFlowEntries();
 
 		// 结局速查：游戏的汗青书（结局）和生死簿（死亡）条目，加上剧本里哪些地方会触发它们
 		Status = "正在整理结局";
@@ -647,7 +685,7 @@ public static class StoryAtlas
 		}
 		string title = TextConverter.ToSimplified(series.Name ?? "");
 		string desc = TextConverter.ToSimplified(series.GetFieldValue<string>("_desc") ?? "");
-		if (title.Length == 0 || IsCode(title))
+		if (title.Length == 0 || title == series.name)
 		{
 			title = desc.Length > 0 ? FirstLine(desc, 16) : series.name;
 		}
@@ -659,30 +697,43 @@ public static class StoryAtlas
 			{
 				continue;
 			}
+			// 缺名的任务使用已核对的多语言标题，原始编号仍用于任务识别。
+			string missionTitle = title;
+			if (title == series.name && UiQuestNames.Titles.TryGetValue(check.StartScript ?? "", out string[] known)) missionTitle = known[0];
 			var mission = new StoryMission
 			{
 				Key = check.Key,
 				Series = series.name,
-				SeriesTitle = main ? "主线" : title,
+				SeriesTitle = main ? "主线" : missionTitle,
 				Main = main,
-				Desc = FirstLine(TextConverter.ToSimplified(check.GetFieldValue<string>("_desc") ?? ""), 30),
+				Desc = FirstLine(TextConverter.ToSimplified(UiQuestNames.Description(check.Key, check.GetFieldValue<string>("_desc")) ?? ""), 30),
 				Place = PlaceName(check.Position),
+				Position = check.Position,
 				StartScript = check.StartScript ?? "",
+				Opening = StoryScripts.Get(check.StartScript ?? "")?.Lines.Take(6).Select(LineText).FirstOrDefault(s => s.Length > 0) ?? "",
 				Conditions = check.GetFieldValue<ConditionResultItem[]>("_conditions") ?? new ConditionResultItem[0],
 				Inactive = !active
 			};
 			SetTime(mission, check);
+			// 使用任务组 ID、地点枚举和原始时间规则，不按译名合并。
+			if (!main && active)
+			{
+				string time = !check.GetFieldValue<bool>("_dayCheck") ? "any" : mission.From != null
+					? mission.From + ":" + mission.To : "monthly:" + (int)check.GetFieldValue<MonthStageType>("_periodStage");
+				mission.FlowGroup = Uri.EscapeDataString(series.name) + "|" + (int)check.Position + "|" + time + "|" + check.BeforeMainMission;
+			}
 			Missions.Add(mission);
 		}
+		GroupFlowEntries(series.name);
 	}
 
-	private static bool IsCode(string text) => text.All(c => c < 128);
 
 	private static void SetTime(StoryMission mission, MissionCheckData check)
 	{
 		if (!check.GetFieldValue<bool>("_dayCheck"))
 		{
 			mission.When = "任意时间";
+			SetDisplayTime(mission);
 			return;
 		}
 		switch (check.GetFieldValue<TimeCheckType>("_timeCheckType"))
@@ -699,8 +750,131 @@ public static class StoryAtlas
 				mission.When = DateText(min) + " ～ " + DateText(max);
 				break;
 			default:
+				mission.Periodic = true;
 				mission.When = "每月" + StageText((int)check.GetFieldValue<MonthStageType>("_periodStage"));
 				break;
+		}
+		SetDisplayTime(mission);
+	}
+
+	// 从原始时间类型读取边界，不解析译文，也不执行条件或读取随机值。
+	private static void SetDisplayTime(StoryMission mission)
+	{
+		var clock = PlayerStatManagerData.Instance?.GetFieldValue<GameTimeData>("_gameTimeData");
+		var savedTimes = PlayerStatManagerData.Instance?.GetFieldValue<GameTimeDataCollection>("_timeCollection")?.List;
+		StatValueReference Single(StatGroupVariable group)
+		{
+			var values = group?.GetFieldValue<List<StatValueReference>>("_value");
+			var type = group != null ? group.GetFieldValue<StatGroupType>("_groupType") : default;
+			return values?.Count == 1 && (type == StatGroupType.Sum || type == StatGroupType.Max || type == StatGroupType.Min || type == StatGroupType.Multiply) ? values[0] : null;
+		}
+		bool Current(StatValueReference value) => clock != null && value?.CheckType == StatCheckType.遊戲時間 && value.GetFieldValue<GameTimeData>("_gameTime") == clock;
+		int? Fixed(StatValueReference value)
+		{
+			if (value?.CheckType == StatCheckType.常數) return value.GetFieldValue<int>("_constant") * (value.GetFieldValue<bool>("_negative") ? -1 : 1) - 1;
+			var time = value?.CheckType == StatCheckType.遊戲時間 ? value.GetFieldValue<GameTimeData>("_gameTime") : null;
+			// 存档中的约定日期会改变，不能把资源里的默认日期当成固定日期。
+			return time == null || time == clock || savedTimes == null || savedTimes.Contains(time) ? (int?)null : Rounds(time.GameTime);
+		}
+		int min = mission.From ?? int.MinValue, max = mission.To ?? int.MaxValue;
+		foreach (var condition in mission.Conditions.Where(c => c != null))
+		{
+			bool any = condition.GetFieldValue<LogicOperatorType>("_logicOp") == LogicOperatorType.OR;
+			var items = condition.GetFieldValue<List<StatCompareItem>>("_items");
+			if (items == null || items.Count == 0) continue;
+			int lower = any ? int.MaxValue : int.MinValue, upper = any ? int.MinValue : int.MaxValue;
+			foreach (var item in items)
+			{
+				int lo = int.MinValue, hi = int.MaxValue;
+				var left = item != null ? Single(item.GetFieldValue<StatGroupVariable>("_value1")) : null;
+				var right = item != null ? Single(item.GetFieldValue<StatGroupVariable>("_value2")) : null;
+				if (Current(left) || Current(right))
+				{
+					bool reverse = !Current(left);
+					int? at = Fixed(reverse ? left : right);
+					var op = item.GetFieldValue<StatCompareType>("_compareOp");
+					if (at == null || op == StatCompareType.NotEqual) mission.VariableTime = true;
+					else if (op == StatCompareType.Equal) lo = hi = at.Value;
+					else if (op == StatCompareType.Greater || op == StatCompareType.GreaterEqual)
+					{
+						if (reverse) hi = at.Value - (op == StatCompareType.Greater ? 1 : 0);
+						else lo = at.Value + (op == StatCompareType.Greater ? 1 : 0);
+					}
+					else if (op == StatCompareType.Less || op == StatCompareType.LessEqual)
+					{
+						if (reverse) lo = at.Value + (op == StatCompareType.Less ? 1 : 0);
+						else hi = at.Value - (op == StatCompareType.Less ? 1 : 0);
+					}
+				}
+				// OR 只取所有分支共同的外界；非时间分支不应变成时间限制。
+				lower = any ? Math.Min(lower, lo) : Math.Max(lower, lo);
+				upper = any ? Math.Max(upper, hi) : Math.Min(upper, hi);
+			}
+			min = Math.Max(min, lower);
+			max = Math.Min(max, upper);
+		}
+		mission.DisplayFrom = min == int.MinValue ? (int?)null : Math.Max(0, min);
+		mission.DisplayTo = max == int.MaxValue ? (int?)null : max;
+		if (min > max) mission.VariableTime = true;
+		if (mission.DisplayFrom != null || mission.DisplayTo != null)
+		{
+			string dates = TimeRange(mission.DisplayFrom, mission.DisplayTo);
+			mission.When = mission.Periodic ? dates + " · " + mission.When : dates;
+		}
+		else if (mission.VariableTime && !mission.Periodic) mission.When = "时间不定";
+	}
+
+	internal static string TimeRange(int? from, int? to) => from == null && to == null ? "任意时间"
+		: from == to ? DateText(from.Value) : (from != null ? DateText(from.Value) : "") + " ～ " + (to != null ? DateText(to.Value) : "");
+
+	// 同任务组、同地点且固定日期重叠的入口共用一张图；编号分节的支线保留各自地点行。
+	private static void GroupFlowEntries(string series)
+	{
+		string Family(string id) => System.Text.RegularExpressions.Regex.Replace(id, @"^(S[0-9]+)_[0-9]+$", "$1");
+		string family = Family(series);
+		bool divided = family != series;
+		foreach (var place in Missions.Where(m => (divided ? Family(m.Series) == family : m.Series == series) && !m.Main && !m.Inactive && !m.Periodic && !m.VariableTime
+			&& (m.DisplayFrom != null || m.DisplayTo != null)).GroupBy(m => divided ? PositionType.無 : m.Position))
+		{
+			string group = "";
+			int end = int.MinValue;
+			foreach (var mission in place.OrderBy(m => m.DisplayFrom ?? int.MinValue).ThenBy(m => m.Key, StringComparer.Ordinal))
+			{
+				if (group.Length == 0 || (mission.DisplayFrom ?? int.MinValue) > end)
+				{
+					group = "range|" + Uri.EscapeDataString(family) + "|" + (int)place.Key + "|" + Uri.EscapeDataString(mission.Key);
+					end = int.MinValue;
+				}
+				mission.FlowGroup = group;
+				end = Math.Max(end, mission.DisplayTo ?? int.MaxValue);
+			}
+		}
+	}
+
+	// 无地点不等于独立自动触发：同旬推进的主线还需要前段指定任务 ID。
+	private static void SetFlowEntries()
+	{
+		var dated = Missions.Where(m => !m.Inactive && !m.Periodic && !m.VariableTime && m.From != null && m.From == m.To).ToArray();
+		var mains = dated.Where(m => m.Main).ToArray();
+		foreach (StoryMission mission in Missions) mission.FlowEntries.Clear();
+		foreach (StoryMission from in mains)
+			foreach (string name in from.Scripts)
+				foreach (StoryExit exit in StoryScripts.Get(name)?.Exits ?? new List<StoryExit>())
+				{
+					StoryMission into = mains.FirstOrDefault(m => m.Key == exit.MainMission && m != from && m.Position == PositionType.無 && m.From == from.From);
+					if (into == null || into.FlowEntries.Any(e => e.Script == name && e.Path.Count == exit.Path.Count && StoryScripts.IsPrefix(e.Path, exit.Path))) continue;
+					into.FlowEntries.Add(new StoryEntry { From = from, Script = name, Path = exit.Path });
+				}
+		// 同旬共用开场的任务保留各入口行；主线同章、同旬的后续段也合入，不按译名判断。
+		string Chapter(string script) => System.Text.RegularExpressions.Regex.Match(script, @"^ch[0-9]+_[0-9]+_").Value;
+		foreach (var start in dated.Where(m => m.StartScript.Length > 0).GroupBy(m => (m.Main, m.StartScript, m.From)).Where(g => g.Count() > 1))
+		{
+			var members = start.ToList();
+			string chapter = Chapter(members[0].StartScript);
+			for (int i = 0; i < members.Count; i++)
+				foreach (StoryMission next in mains.Where(m => members[0].Main && !members.Contains(m) && chapter.Length > 0 && Chapter(m.StartScript) == chapter
+					&& m.FlowEntries.Any(e => e.From == members[i]))) members.Add(next);
+			foreach (StoryMission member in members) member.FlowGroup = "opening|" + Uri.EscapeDataString(members[0].Key);
 		}
 	}
 
@@ -742,7 +916,7 @@ public static class StoryAtlas
 		return TextConverter.ToSimplified(name);
 	}
 
-	private static string LibraryText(string key, string fallback)
+	internal static string LibraryText(string key, string fallback)
 	{
 		try
 		{
@@ -766,7 +940,7 @@ public static class StoryAtlas
 		return first.Length > length ? first.Substring(0, length) + "…" : first;
 	}
 
-	/// <summary>任务的触发条件（多组之间是「或」），带当前值，满足绿、不满足红。</summary>
+	/// <summary>任务的触发条件（各组都要满足），带当前值，满足绿、不满足红。</summary>
 	public static string ConditionText(StoryMission mission)
 	{
 		if (Conditions.TryGetValue(mission, out string cached))
@@ -786,6 +960,6 @@ public static class StoryAtlas
 				parts.Add(text);
 			}
 		}
-		return Conditions[mission] = string.Join("\n或 ", parts.ToArray());
+		return Conditions[mission] = string.Join("\n且 ", parts.ToArray());
 	}
 }

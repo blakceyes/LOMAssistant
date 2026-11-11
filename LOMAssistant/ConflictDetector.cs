@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -21,6 +22,51 @@ public static class ConflictDetector
 	public static readonly List<string> Warnings = new List<string>();
 
 	public static bool Checked { get; private set; }
+
+	// 已经自动打开设置页提示过的冲突，一行一条
+	private static string ShownMark => Path.Combine(Path.GetDirectoryName(typeof(ConflictDetector).Assembly.Location) ?? ".", "StoryReview", "compat-warnings");
+
+	/// <summary>有没有还没自动打开设置页提示过的冲突。</summary>
+	public static bool HasNewWarning
+	{
+		get
+		{
+			if (Warnings.Count == 0)
+			{
+				return false;
+			}
+			if (_shown == null)
+			{
+				try
+				{
+					_shown = new HashSet<string>(File.Exists(ShownMark) ? File.ReadAllLines(ShownMark) : new string[0]);
+				}
+				catch (Exception e)
+				{
+					FileLogger.LogWarning("[冲突检测] 读取已提示记录失败: " + e.Message);
+					_shown = new HashSet<string>();
+				}
+			}
+			return Warnings.Any(warning => !_shown.Contains(warning));
+		}
+	}
+
+	private static HashSet<string> _shown;
+
+	/// <summary>记下这些冲突已经提示过，下次启动不再自动打开设置页。</summary>
+	public static void RememberWarnings()
+	{
+		try
+		{
+			List<string> added = Warnings.Where(warning => _shown.Add(warning)).ToList();
+			Directory.CreateDirectory(Path.GetDirectoryName(ShownMark));
+			File.AppendAllLines(ShownMark, added);
+		}
+		catch (Exception e)
+		{
+			FileLogger.LogWarning("[冲突检测] 保存已提示记录失败: " + e.Message);
+		}
+	}
 
 	public static IEnumerator CheckLater(Harmony ours)
 	{
@@ -69,6 +115,12 @@ public static class ConflictDetector
 						FileLogger.Log($"[冲突检测] 翻译补丁（{assembly.GetName().Name}）也改了 {method.DeclaringType?.Name}.{method.Name}，已兼容，不提示");
 						continue;
 					}
+					// 剧情 Mod 的加载器：只有 Mod 带了对应内容才接管，其余放行，本 Mod 也读它的内容（见 ModScripts）
+					if (assembly != null && IsStoryModLoader(assembly))
+					{
+						FileLogger.Log($"[冲突检测] 剧情 Mod（{assembly.GetName().Name}）也改了 {method.DeclaringType?.Name}.{method.Name}，已兼容，不提示");
+						continue;
+					}
 					if (assembly != null && !owners.ContainsKey(owner))
 					{
 						owners[owner] = assembly;
@@ -92,10 +144,10 @@ public static class ConflictDetector
 				// Harmony 实例没起名字（harmony-auto-…）时，用补丁所在的程序集找出是哪个插件
 				string name = pluginNames.TryGetValue(clash.Key, out string n) ? n : owners.TryGetValue(clash.Key, out Assembly asm) ? PluginName(asm, pluginNames) : clash.Key;
 				string methods = string.Join("、", clash.Value.Distinct().ToArray());
-				string message = $"检测到冲突的 Mod：{name}（{clash.Key}），和本 Mod 同时修改了 {clash.Value.Distinct().Count()} 处游戏代码：{methods}。可能导致骰子或选项显示异常。请删除旧版骰子大师、多功能 Mod、活侠传助手等同类 Mod 后重新覆盖安装。";
+				string message = $"检测到冲突的 Mod：{name}（{clash.Key}），和本 Mod 同时修改了 {clash.Value.Distinct().Count()} 处游戏代码：{methods}。本 Mod 的部分功能可能不生效（如骰子、选项显示）；出现问题建议删掉旧版骰子大师、多功能 Mod、活侠传助手等同类 Mod 后重新覆盖安装。";
 				LOMAssistantPlugin.LogWarning(message);
 				FileLogger.LogWarning("[冲突检测] " + message);
-				Warnings.Add($"{name} 与本 Mod 冲突（{clash.Value.Distinct().Count()} 处），请删除后重新覆盖安装");
+				Warnings.Add($"{name} 和本 Mod 改了同样的游戏代码（{clash.Value.Distinct().Count()} 处），部分功能可能不生效；出现问题建议删掉它");
 			}
 			if (clashes.Count == 0)
 			{
@@ -119,7 +171,7 @@ public static class ConflictDetector
 		(ConfigManager.SkipReadKey, "一键快进已读对话"),
 		(ConfigManager.AnytimePanelKey, "随时存档页"),
 		(ConfigManager.AnytimeSaveKey, "随时存档：存新档"),
-		(ConfigManager.AnytimeLoadKey, "随时存档：读最近的"),
+		(ConfigManager.AnytimeLoadKey, "随时存档：读取最新存档"),
 		(ConfigManager.AnytimeRollbackKey, "回退到判定前"),
 	};
 
@@ -237,6 +289,9 @@ public static class ConflictDetector
 	}
 	// 翻译补丁：日语补丁（LOM_JP_…）、英文补丁（LLM 版 FanslationStudio.LegendOfMortal…，XUnity.AutoTranslator），
 	// 和本 Mod 一起装玩家测试过，只是同一处游戏代码各改各的（翻译、字体），不算冲突
+	private static bool IsStoryModLoader(Assembly assembly) => assembly.GetType("Mortal.HookCustomStory") != null
+		|| assembly.GetName().Name.StartsWith("HahuranGongdong", StringComparison.OrdinalIgnoreCase);
+
 	private static bool IsTranslationPatch(string name) => name.StartsWith("LOM_JP_", StringComparison.OrdinalIgnoreCase)
 		|| name.StartsWith("FanslationStudio.LegendOfMortal", StringComparison.OrdinalIgnoreCase)
 		|| name.StartsWith("XUnity.AutoTranslator", StringComparison.OrdinalIgnoreCase);

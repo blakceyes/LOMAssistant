@@ -9,11 +9,17 @@ SDK_DIR="$(dirname "$(command -v "$DOTNET" || echo "$DOTNET")")/sdk"
 CSC="$(find "$SDK_DIR" -path '*Roslyn/bincore/csc.dll' | sort | tail -1)"
 FW="${FW:-/c/Windows/Microsoft.NET/Framework64/v4.0.30319}"
 refs=()
-for n in mscorlib System System.Core System.Drawing System.Windows.Forms System.IO.Compression System.IO.Compression.FileSystem System.Management; do
+for n in mscorlib System System.Core System.Drawing System.Windows.Forms System.IO.Compression System.IO.Compression.FileSystem; do
 	refs+=("-r:$FW/$n.dll")
 done
-mkdir -p bin
+mkdir -p bin obj
+# 安装器自己的版本号，和 Mod 版本无关：只在安装器代码改了时才加。
+# 安装器不带 Mod 版本号、不带更新内容（都从压缩包里读），同样的代码编出来一个字节都不变，
+# 每次发版放出去的是同一个文件，杀毒软件和 SmartScreen 按文件记的信誉才能一直累积。
+INSTALLER_VERSION=1.1.0
+printf '[assembly: System.Reflection.AssemblyVersion("%s.0")]\n[assembly: System.Reflection.AssemblyFileVersion("%s.0")]\n[assembly: System.Reflection.AssemblyInformationalVersion("%s")]\n' \
+	"$INSTALLER_VERSION" "$INSTALLER_VERSION" "$INSTALLER_VERSION" > obj/InstallerVersion.cs
 "$DOTNET" "$CSC" -nologo -noconfig -nostdlib+ -target:winexe -platform:anycpu -langversion:12 -optimize+ -deterministic \
-	-win32manifest:app.manifest -out:"bin/咖啡伴侣安装器 Installer.exe" "${refs[@]}" \
-	-resource:banner.zh.jpg,Installer.banner.zh.jpg -resource:banner.zh-Hant.jpg,Installer.banner.zh-Hant.jpg -resource:banner.en.jpg,Installer.banner.en.jpg -resource:banner.ja.jpg,Installer.banner.ja.jpg -resource:banner.ko.jpg,Installer.banner.ko.jpg -resource:../CHANGELOG.md,Installer.CHANGELOG.md -resource:../CHANGELOG.en.md,Installer.CHANGELOG.en.md -resource:../CHANGELOG.ja.md,Installer.CHANGELOG.ja.md -resource:../CHANGELOG.ko.md,Installer.CHANGELOG.ko.md *.cs ../LOMAssistant/UiTraditional.cs
+	-win32manifest:app.manifest -win32icon:app.ico -out:"bin/咖啡伴侣安装器 Installer.exe" "${refs[@]}" \
+	*.cs obj/InstallerVersion.cs ../LOMAssistant/UiTraditional.cs
 echo "Built Installer/bin/咖啡伴侣安装器 Installer.exe"

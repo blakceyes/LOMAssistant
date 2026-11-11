@@ -15,6 +15,11 @@ public class LuaParser
 
 	private static readonly Regex switchRegex = new Regex("checkpointmanager\\.Switch\\(([^)]*)\\)");
 
+	// 「local switch_001_result = checkpointmanager.Switch("S_Mental_GE_65")」和「if switch_001_result == 1 then」
+	private static readonly Regex switchLocalRegex = new Regex("^local (\\w+) = checkpointmanager\\.Switch\\(\"([^\"]+)\"\\)");
+
+	private static readonly Regex switchArmRegex = new Regex("^(?:if|elseif) (\\w+) == (\\d+) then");
+
 	private static readonly Regex positionRegex = new Regex("checkpointmanager\\.Position\\(([^)]*)\\)");
 
 	private static readonly Regex modifyRegex = new Regex("\\s*statmodifymanager\\.(?!GetDisplayTime)\\w+\\(.*?\\)");
@@ -284,28 +289,109 @@ public class LuaParser
 	private void AddActionsToList(string blockContent, Regex regex, ActionType actionType, List<Action> actionList)
 	{
 		string[] array = blockContent.Split(new string[3] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-		bool isConditional = false;
-		int branchIndex = 0;
-		string[] array2 = array;
-		foreach (string text in array2)
+		var scope = new BranchScope();
+		foreach (string text in array)
 		{
-			string text2 = text.Trim();
-			if (text2.StartsWith("if") || text2.StartsWith("elseif"))
-			{
-				isConditional = true;
-				branchIndex++;
-			}
-			else if (text2 == "else")
-			{
-				branchIndex++;
-			}
-			else if (text2.StartsWith("end"))
-			{
-				isConditional = false;
-			}
+			scope.Step(text.Trim());
 			foreach (Match item in regex.Matches(text))
 			{
-				actionList.Add(new Action(actionType, item.Value.Trim(), isConditional, branchIndex));
+				actionList.Add(new Action(actionType, item.Value.Trim(), scope.Conditional, scope.Branch) { Checkpoint = scope.Checkpoint, Arm = scope.Arm });
+			}
+		}
+	}
+
+	/// <summary>
+	/// 逐行走 Lua 的 if/elseif/else/end，记下当前在哪个判断的哪一支。判断可以嵌套：内层 end 之后回到外层那一支，
+	/// 外层后面的效果仍只属于这一支。从分支中间截出来的片段可能先碰到 elseif/else，这时当成新开的一支。
+	/// </summary>
+	private static readonly Regex wordRegex = new Regex("\\b(if|function|do|end)\\b");
+
+	private static readonly Regex stringRegex = new Regex("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|--.*$");
+
+	private sealed class BranchScope
+	{
+		private sealed class Frame
+		{
+			public int Branch;
+			public string IfCheckpoint = "", Checkpoint = "";
+			public int Arm = -1;
+		}
+
+		private readonly Stack<Frame> frames = new Stack<Frame>();
+
+		// 记下每个分支判断存进哪个变量，分支里的变化就知道是哪个检查点的第几支，说明里能写出条件
+		private readonly Dictionary<string, string> switches = new Dictionary<string, string>();
+
+		private int count;
+
+		// 上一行是写在一行里的 if … end，只管那一行
+		private bool oneLine;
+
+		public bool Conditional => frames.Count > 0;
+
+		public int Branch => frames.Count > 0 ? frames.Peek().Branch : 0;
+
+		public string Checkpoint => frames.Count > 0 ? frames.Peek().Checkpoint : "";
+
+		public int Arm => frames.Count > 0 ? frames.Peek().Arm : -1;
+
+		public void Step(string line)
+		{
+			if (oneLine)
+			{
+				frames.Pop();
+				oneLine = false;
+			}
+			// 原版剧本的 if 都独占一行；剧情 Mod 常写成一行，按关键字数这一行开了几层
+			if ((line.StartsWith("if ") || line.StartsWith("elseif ")) && !line.EndsWith(" then"))
+			{
+				int depth = wordRegex.Matches(stringRegex.Replace(line, "")).Cast<Match>().Sum(m => m.Value == "end" ? -1 : 1);
+				if (depth < 0 && frames.Count > 0)
+				{
+					frames.Pop();
+				}
+				else if (depth >= 0 && line.StartsWith("if "))
+				{
+					frames.Push(new Frame { Branch = ++count });
+					oneLine = depth == 0;
+				}
+				return;
+			}
+			Match local = switchLocalRegex.Match(line);
+			if (local.Success)
+			{
+				switches[local.Groups[1].Value] = local.Groups[2].Value;
+			}
+			if (line.StartsWith("if ") || line.StartsWith("elseif "))
+			{
+				if (line.StartsWith("if ") || frames.Count == 0)
+				{
+					frames.Push(new Frame());
+				}
+				Frame top = frames.Peek();
+				top.Branch = ++count;
+				Match m = switchArmRegex.Match(line);
+				top.Checkpoint = m.Success && switches.TryGetValue(m.Groups[1].Value, out string name) ? name : "";
+				top.Arm = top.Checkpoint.Length > 0 ? int.Parse(m.Groups[2].Value) : -1;
+				if (line.StartsWith("if "))
+				{
+					top.IfCheckpoint = top.Checkpoint;
+				}
+			}
+			else if (line == "else")
+			{
+				if (frames.Count == 0)
+				{
+					frames.Push(new Frame());
+				}
+				Frame top = frames.Peek();
+				top.Branch = ++count;
+				top.Checkpoint = top.IfCheckpoint;
+				top.Arm = top.Checkpoint.Length > 0 ? 0 : -1;
+			}
+			else if ((line == "end" || line.StartsWith("end ")) && frames.Count > 0)
+			{
+				frames.Pop();
 			}
 		}
 	}
@@ -354,49 +440,117 @@ public class LuaParser
 		}
 		string[] array = DataHelper.LoadLuaScript(luaScriptName).Split(new string[3] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 		List<Action> list = new List<Action>();
-		bool isConditional = false;
-		int branchIndex = 0;
+		var scope = new BranchScope();
 		string[] array2 = array;
 		for (int i = 0; i < array2.Length; i++)
 		{
 			string text = array2[i].Trim();
-			if (text.StartsWith("if") || text.StartsWith("elseif"))
-			{
-				isConditional = true;
-				branchIndex++;
-			}
-			else if (text == "else")
-			{
-				branchIndex++;
-			}
-			else if (text.StartsWith("end"))
-			{
-				isConditional = false;
-			}
+			scope.Step(text);
 			foreach (Match item in modifyRegex.Matches(text))
 			{
-				list.Add(new Action(ActionType.ModifyAction, item.Value, isConditional, branchIndex));
+				list.Add(new Action(ActionType.ModifyAction, item.Value, scope.Conditional, scope.Branch) { Checkpoint = scope.Checkpoint, Arm = scope.Arm });
 			}
 			foreach (Match item2 in battleScenesRegex.Matches(text))
 			{
-				list.Add(new Action(ActionType.BattleScene, item2.Value, isConditional, branchIndex));
+				list.Add(new Action(ActionType.BattleScene, item2.Value, scope.Conditional, scope.Branch) { Checkpoint = scope.Checkpoint, Arm = scope.Arm });
 			}
 		}
 		luaModification[luaScriptName] = list;
 		return list;
 	}
 
-	public static string Description(List<Action> actions)
+	/// <summary>
+	/// 条件分支里的变化，一支一行：「若 条件：变化」。条件取自分支判断（Switch）检查点的那一支，带当前值；
+	/// else 那支写「否则（不满足：…）」；认不出条件的（不是分支判断的 if）写「某些条件下」。
+	/// </summary>
+	public static List<string> ConditionalLines(List<Action> actions)
 	{
-		List<string> list = (from action in actions
-			where !action.IsConditional
-			select action.Description into description
-			where !string.IsNullOrEmpty(description)
-			select description).Distinct().ToList();
-		List<string> list2 = (from action in actions
-			where action.IsConditional && !string.IsNullOrEmpty(action.Description)
-			group action.Description by action.BranchIndex into g
-			select string.Join("、", g.Distinct())).ToList();
+		var lines = new List<string>();
+		foreach (var branch in Effects(actions).Where(r => r.Branch != 0).GroupBy(r => r.Branch))
+		{
+			Action first = branch.First().First;
+			string effects = string.Join("、", branch.Select(r => r.Text).ToArray());
+			string when = first.Checkpoint.Length == 0 ? "" : RichText.Strip(DataHelper.SwitchBranchCondition(first.Checkpoint, first.Arm)).Trim();
+			// else，或者比条件条数多一的那个结果值（条件都不满足时 Switch 返回它）：写成「否则（不满足：…）」
+			bool otherwise = first.Arm == 0 || when == "以上条件都不满足";
+			if (first.Checkpoint.Length > 0 && otherwise)
+			{
+				lines.Add(LOMAssistant.Features.Story.StoryScripts.Otherwise(first.Checkpoint, true) + "：" + effects);
+			}
+			else if (when.Length == 0)
+			{
+				lines.Add("某些条件下：" + effects);
+			}
+			else
+			{
+				lines.Add("若 " + TextConverter.ToSimplifiedUnlessJapanese(when) + "：" + effects);
+			}
+		}
+		return lines;
+	}
+
+	/// <summary>
+	/// 每一支（0 是不分支的部分）要显示的效果，按出现顺序。同一支里重复的加减都会执行，合成一条写总数；
+	/// 依赖当前数值的按实际增量写，拿不到数值时写 Action.Description。其余相同的说明只留一条。
+	/// </summary>
+	private static List<(int Branch, Action First, string Text)> Effects(List<Action> actions)
+	{
+		var rows = new List<(int Branch, Action First, string Text)>();
+		var totals = new Dictionary<(int, string), int>();
+		var rowOf = new Dictionary<(int, string), int>();
+		int Total(int branch, string key) => totals.TryGetValue((branch, key), out int total) ? total : 0;
+		foreach (Action action in actions.Where(a => !string.IsNullOrEmpty(a.Description)))
+		{
+			int branch = action.IsConditional ? action.BranchIndex : 0;
+			int? actual = null;
+			if (action.Key != null)
+			{
+				try
+				{
+					actual = action.Actual(key => Total(0, key) + (branch != 0 ? Total(branch, key) : 0));
+				}
+				catch (Exception e)
+				{
+					FileLogger.LogWarning("效果预览读取当前数值失败: " + e.Message);
+				}
+			}
+			if (actual == null)
+			{
+				if (!rows.Any(r => r.Branch == branch && r.Text == action.Description))
+				{
+					rows.Add((branch, action, action.Description));
+				}
+				continue;
+			}
+			var slot = (branch, action.Key);
+			int sum = Total(branch, action.Key) + actual.Value;
+			totals[slot] = sum;
+			if (rowOf.TryGetValue(slot, out int row))
+			{
+				rows[row] = (branch, rows[row].First, action.Shown(sum));
+			}
+			else
+			{
+				rowOf[slot] = rows.Count;
+				rows.Add((branch, action, action.Shown(sum)));
+			}
+		}
+		return rows;
+	}
+
+	public static string Description(List<Action> actions) => FormatDescription(actions, text => text);
+
+	internal static string DisplayDescription(List<Action> actions) =>
+		FormatDescription(actions, text => TextConverter.ForDisplay(RichText.Strip(TextConverter.ToSimplifiedUnlessJapanese(text))));
+
+	private static string FormatDescription(List<Action> actions, Func<string, string> format)
+	{
+		var rows = Effects(actions);
+		List<string> list = rows.Where(r => r.Branch == 0).Select(r => format(r.Text)).ToList();
+		List<string> list2 = (from r in rows
+			where r.Branch != 0
+			group r.Text by r.Branch into g
+			select string.Join("、", g.Select(format))).ToList();
 		List<string> list3 = new List<string>();
 		if (list.Count > 0)
 		{
@@ -404,7 +558,7 @@ public class LuaParser
 		}
 		if (list2.Count == 1)
 		{
-			list3.Add("后续: " + list2[0]);
+			list3.Add(format("后续: ") + list2[0]);
 		}
 		else if (list2.Count > 1)
 		{
@@ -414,7 +568,7 @@ public class LuaParser
 			{
 				numbered.Add((i < circled.Length ? circled[i].ToString() : (i + 1) + ".") + list2[i]);
 			}
-			list3.Add("后续: " + string.Join(" ", numbered));
+			list3.Add(format("后续: ") + string.Join(" ", numbered));
 		}
 		return string.Join("；", list3);
 	}

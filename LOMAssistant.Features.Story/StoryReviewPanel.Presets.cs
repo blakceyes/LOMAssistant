@@ -26,7 +26,7 @@ public partial class StoryReviewPanel
 	private int _presetConfirm = -1;
 	private float _presetConfirmUntil;
 
-	// 作弊类：无限修炼锻造、不花银两从「辅助」起打开，其余只有「全开」打开（「决斗敌方不受伤」「突破属性上限」哪一档都不开）
+	// 作弊类：无限修炼锻造、不花银两从「辅助」起打开，开发装备无视剧情条件只有「全开」打开，战斗作弊都不打开（「决斗敌方不受伤」「突破属性上限」哪一档都不开）
 	private static (IConfigElement, object)[] Cheats(bool training, bool on) => new (IConfigElement, object)[]
 	{
 		(ConfigManager.BreakStatLimit, false),
@@ -34,10 +34,10 @@ public partial class StoryReviewPanel
 		(ConfigManager.CheatUnlimitedUpgrade, training),
 		(ConfigManager.CheatFreeUpgradeMoney, training),
 		(ConfigManager.CheatDevelopIgnoreStory, on),
-		(ConfigManager.CheatDuelInvincible, on),
+		(ConfigManager.CheatDuelInvincible, false),
 		(ConfigManager.CheatDuelNoDamage, false),
-		(ConfigManager.CheatBattleInvincible, on),
-		(ConfigManager.CheatBattleNoCooldown, on),
+		(ConfigManager.CheatBattleInvincible, false),
+		(ConfigManager.CheatBattleNoCooldown, false),
 	};
 
 	private static Preset[] Presets => _presets ??= new[]
@@ -49,7 +49,7 @@ public partial class StoryReviewPanel
 			Note = "关掉选项提示、骰子和随机事件自选、地图提示、直接获胜、剧情跳转等辅助和全部作弊，只留随时存档、节点存档、提速这些不影响游戏的功能",
 			Values = new (IConfigElement, object)[]
 			{
-				(ConfigManager.ShowBranchChecks, false),
+				(ConfigManager.ShowBranchChecks, 0),
 				(ConfigManager.ShowFlagChanges, false),
 				(ConfigManager.EnableEventPicker, false),
 				(ConfigManager.ForceUnmetEvents, false),
@@ -58,6 +58,9 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableOneClickUnlock, false),
 				(ConfigManager.EnableOptionInfo, false),
 				(ConfigManager.ShowItemUses, false),
+				(ConfigManager.ShowReadMarks, false),
+				(ConfigManager.BattleCompanions, false),
+				(ConfigManager.BattleFeel, false),
 				(ConfigManager.OptionResultMode, 2),
 				(ConfigManager.EnableManualDiceSelection, false),
 				(ConfigManager.EnableMapHints, false),
@@ -66,6 +69,8 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableCombatAssist, false),
 				(ConfigManager.EnableBattleWin, false),
 				(ConfigManager.EnableDuelActionForecast, false),
+				(ConfigManager.FightDeathHint, false),
+				(ConfigManager.FightRoundHint, false),
 				(ConfigManager.EnableLibraryDisplay, 0),
 				(ConfigManager.EnableShopAllItems, false),
 				(ConfigManager.EnableStoryJump, false),
@@ -75,10 +80,10 @@ public partial class StoryReviewPanel
 		{
 			Name = "辅助",
 			Tagline = "建议多周目玩家选择",
-			Note = "选项后果、骰子自选、地图提示、空过、直接获胜按钮、无限修炼锻造和不花银两打开；分支小窗、旗标提示、随机事件自选、剧情跳转和其他作弊关闭",
+			Note = "选项后果、骰子自选、地图提示、空过、直接获胜按钮、战斗失败死亡提示、无限修炼锻造和不花银两打开；分支小窗、旗标提示、随机事件自选、剧情跳转和其他作弊关闭",
 			Values = new (IConfigElement, object)[]
 			{
-				(ConfigManager.ShowBranchChecks, false),
+				(ConfigManager.ShowBranchChecks, 0),
 				(ConfigManager.ShowFlagChanges, false),
 				(ConfigManager.EnableEventPicker, false),
 				(ConfigManager.ForceUnmetEvents, false),
@@ -87,6 +92,9 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableOneClickUnlock, true),
 				(ConfigManager.EnableOptionInfo, true),
 				(ConfigManager.ShowItemUses, false),
+				(ConfigManager.ShowReadMarks, false),
+				(ConfigManager.BattleCompanions, false),
+				(ConfigManager.BattleFeel, true),
 				(ConfigManager.OptionResultMode, 0),
 				(ConfigManager.EnableManualDiceSelection, true),
 				(ConfigManager.EnableMapHints, true),
@@ -95,20 +103,22 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableCombatAssist, true),
 				(ConfigManager.EnableBattleWin, true),
 				(ConfigManager.EnableDuelActionForecast, false),
+				(ConfigManager.FightDeathHint, true),
+				(ConfigManager.FightRoundHint, true),
 				(ConfigManager.EnableLibraryDisplay, 1),
 				(ConfigManager.EnableShopAllItems, false),
 				(ConfigManager.EnableStoryJump, false),
 			}.Concat(Cheats(true, false)).ToArray(),
 		},
-		// 介于「辅助」和「全开」之间：比「全开」少了判断前选走哪一支、强行触发条件没满足的事件和选项，以及会让战斗、商店失去意义的作弊
+		// 介于「辅助」和「全开」之间：比「全开」少了分支判定手动选择、强制触发未满足条件的事件和选项，以及会让战斗、商店失去意义的作弊
 		new Preset
 		{
 			Name = "进阶",
 			Tagline = "建议补全剧情的老玩家选择",
-			Note = "打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开判断前选走哪一支和强行触发条件没满足的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品",
+			Note = "打开分支小窗、旗标提示、随机事件自选、剧情跳转等剧情辅助，不开分支判定手动选择和强制触发未满足条件的事件和选项；作弊只开无限修炼锻造和不花银两；讲经堂只提示达成条件，四师兄不卖全部物品",
 			Values = new (IConfigElement, object)[]
 			{
-				(ConfigManager.ShowBranchChecks, true),
+				(ConfigManager.ShowBranchChecks, 1),
 				(ConfigManager.ShowFlagChanges, true),
 				(ConfigManager.EnableEventPicker, true),
 				(ConfigManager.ForceUnmetEvents, false),
@@ -117,6 +127,9 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableOneClickUnlock, true),
 				(ConfigManager.EnableOptionInfo, true),
 				(ConfigManager.ShowItemUses, true),
+				(ConfigManager.ShowReadMarks, true),
+				(ConfigManager.BattleCompanions, true),
+				(ConfigManager.BattleFeel, true),
 				(ConfigManager.OptionResultMode, 0),
 				(ConfigManager.EnableManualDiceSelection, true),
 				(ConfigManager.EnableMapHints, true),
@@ -124,7 +137,9 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableSkipAction, true),
 				(ConfigManager.EnableCombatAssist, true),
 				(ConfigManager.EnableBattleWin, true),
-				(ConfigManager.EnableDuelActionForecast, true),
+				(ConfigManager.EnableDuelActionForecast, false),
+				(ConfigManager.FightDeathHint, true),
+				(ConfigManager.FightRoundHint, true),
 				(ConfigManager.EnableLibraryDisplay, 1),
 				(ConfigManager.EnableShopAllItems, false),
 				(ConfigManager.EnableStoryJump, true),
@@ -134,10 +149,10 @@ public partial class StoryReviewPanel
 		{
 			Name = "全开",
 			Tagline = "建议想收集全部剧情分支的玩家选择",
-			Note = "在「进阶」之上再打开判断前选走哪一支、强行触发条件没满足的事件和选项、四师兄卖全部物品，讲经堂全部解锁，以及战斗无敌等作弊",
+			Note = "在「进阶」之上再打开分支判定手动选择、强制触发未满足条件的事件和选项、四师兄售卖全部物品、决斗敌方行动预测，讲经堂全部解锁，以及开发装备无视剧情条件",
 			Values = new (IConfigElement, object)[]
 			{
-				(ConfigManager.ShowBranchChecks, true),
+				(ConfigManager.ShowBranchChecks, 1),
 				(ConfigManager.ShowFlagChanges, true),
 				(ConfigManager.EnableEventPicker, true),
 				(ConfigManager.ForceUnmetEvents, true),
@@ -146,6 +161,9 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableOneClickUnlock, true),
 				(ConfigManager.EnableOptionInfo, true),
 				(ConfigManager.ShowItemUses, true),
+				(ConfigManager.ShowReadMarks, true),
+				(ConfigManager.BattleCompanions, true),
+				(ConfigManager.BattleFeel, true),
 				(ConfigManager.OptionResultMode, 0),
 				(ConfigManager.EnableManualDiceSelection, true),
 				(ConfigManager.EnableMapHints, true),
@@ -154,6 +172,8 @@ public partial class StoryReviewPanel
 				(ConfigManager.EnableCombatAssist, true),
 				(ConfigManager.EnableBattleWin, true),
 				(ConfigManager.EnableDuelActionForecast, true),
+				(ConfigManager.FightDeathHint, true),
+				(ConfigManager.FightRoundHint, true),
 				(ConfigManager.EnableLibraryDisplay, 2),
 				(ConfigManager.EnableShopAllItems, true),
 				(ConfigManager.EnableStoryJump, true),

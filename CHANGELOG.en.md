@@ -2,6 +2,117 @@
 
 Changes in each version, newest first. Versions before 2.7.0 are only in Chinese; see CHANGELOG.md.
 
+## 3.7.0 (2026-11-09)
+
+- **Proactive companion** (new, off by default): a persona of your choice stays on the game screen and says a line or two when you make a choice, roll dice, finish a fight, see affection change, or have a timed story about to run out. It only comments and advises. Talk frequency has three levels (Quiet, Normal, Chatty), and it can use its own model and a token cap per game launch. The switch is on the AI companion tab.
+- **Custom personas** (new): put a persona text and images in a folder to add a persona of your own; the built-in personas' images and texts can be replaced too. Open the folder from "AI settings"; it contains instructions.
+- **AI settings**: each provider keeps its own key, so switching providers no longer means typing it again. The settings page now has three columns and a back button.
+- **Better battle controls**: removed three parts: normal attacks costing no energy, kills shortening ultimate cooldowns, and battle results not lowering temperament and contribution.
+- **Story jump**: off by default; players using the "Advanced" or "All on" preset keep it on after updating.
+- **Game speed**: after the game changes its own speed, the speed multiplier is no longer miscalculated (#50).
+- **Choice outcomes**: "Otherwise" conditions in outcome notes are now translated in the Korean, Japanese and English UI (PR #49).
+- **Timed story reminder, Now tab**: quests that can trigger anywhere are no longer shown as triggering at a place called "None".
+- **Save list**: when one save can't be read, only that save is marked "Unreadable save"; the other saves show as usual.
+- **Save notes**: on first launch, notes from LOM_SaveSlotMemo are imported automatically (first line only).
+- **Traditional Chinese**: more UI terms now use common wording.
+
+## 3.6.6 (2026-11-08)
+
+- **Gallery Animations page** (new, PR #48): plays the game's frame-by-frame animations of character battle moves and effects, with adjustable frame rate and background, and exports transparent GIFs (to the desktop by default).
+- **Gallery Music page**: a player bar at the bottom with pause and resume, showing the current time and track length.
+- **Enemy morale in battles**: this setting is removed.
+- **Installer**: every version now ships the same installer file, so browsers and antivirus software block it less as more people download it.
+
+## 3.6.5 (2026-11-08)
+
+- **Load screen**: when you load from inside the game, "Start a new game" is now at the bottom of the list; on the title screen it stays at the top.
+- **Save screen**: the sort button is now at the top right of this list too, sharing one setting with the load screen.
+- **Choice outcomes**: the outcome notes under dialogue choices and dice lines scale with **Game text size**; enlarged dice lines grow taller so they no longer overlap.
+- **Installer**: the banner image is removed, so the file is smaller.
+
+## 3.6.4 (2026-11-07)
+
+- **Installer**: fewer false positives from antivirus software.
+- **Duel rework**: this setting is removed. Enemies adapting to stamina, health and the command you keep repeating is now part of **Stronger duel enemies** (formerly Scale duel enemies).
+- **Gallery**: the Portraits page shows character and expression names from the game in the UI language instead of English file names.
+- **AI Companion**: no more lag when a chat has many messages.
+
+## 3.6.3 (2026-11-07)
+
+- **Training Pagoda** (new setting, on by default): a new Training Pagoda button on the title screen plays the demo's Training Pagoda mode, including the deaths only this mode can trigger.
+
+## 3.6.2 (2026-11-06)
+
+- **Top notice text size** (new setting): sets the text size of the flag and branch notices at the top of the screen. The default is 80%; smaller text fits more lines at once.
+- **Story mods**: story mods loaded with Binarizer are supported. The Story map and Gallery read the mod's scripts, and save-anywhere can save and load inside them. Checks written directly in a mod's scripts aren't shown, and after installing a mod, older save-anywhere saves that passed through scripts it changed can't be loaded.
+- **Conflict warnings**: the settings page opens automatically only the first time a conflict is detected; the warning stays at the top of settings.
+
+## 3.6.1 (2026-11-06)
+
+- **Duel round events** (new setting, on from Assist up): when reaching a round in a duel ends the fight or changes a flag, the top of the screen shows the next such round. The notice contains spoilers.
+- **Now page**: during fights it shows what follows a win or a loss and the round events. Battles also show the victory condition and events triggered by time or head count.
+- **Save-anywhere**: loading now hides the fast-forward, shows progress and mutes the sound.
+- **Fix**: loading a save-anywhere save on the training map recalculates missions, so timed events trigger correctly.
+
+## 3.6.0 (2026-11-05)
+
+- **Gallery** (new setting, on by default): a new Gallery button on the title screen with CG, Portraits and Music pages. Gamepads are supported.
+  - CG: story pictures you have seen and ending CGs, sorted by type and viewable full screen. All scene images are open, and a switch on the page shows locked content.
+  - Portraits: pick a scene or unlocked CG as the background, place characters, change variants, then drag, resize, flip and reorder them. The UI can be hidden for screenshots.
+  - Music: all 39 tracks from both official soundtrack albums.
+- **Effect previews**: effects after a nested check now stay in the right branch instead of counting as Always; moves toward 50, mood-based gains and the affection cap show the actual change from current values; repeated gains in one branch are merged into a total; effects set by a variable read "varies".
+- **Translation**: fixed untranslated text in option results and conditional scene notes.
+
+## 3.5.2 (2026-11-05)
+
+- **Death-on-defeat notice** (new setting, on from Assist up): when losing a fight leads to a death, the top of the screen shows its name and whether you have collected it for the whole fight. If other conditions also apply after the loss, it says the loss may mean death. Deaths caused by options are not shown. The notice contains spoilers.
+- **Stats tab titles**: mood, the four personality stats and yin-yang show their current title after the value.
+- **Contribution lock**: Contribution on the Stats tab gets a lock like the mood lock, which keeps story and options from changing it.
+- **Translation**: location names and branch notices are now translated into Korean, Japanese and English.
+
+## 3.5.1 (2026-11-04)
+
+- **Show branch checks**: now a choice of Never, Panel or Top notice. If it was on, it becomes Panel. Top notice appears at the top of the screen like flag change notices.
+- **Title screen character**: new Everyone option shows all the characters together on the title screen.
+- **Numbers in conditions**: when a flag number stands for an option, the option name appears after it. Chinese interface only.
+- **Now page**: missions the game leaves unnamed use their route map title instead of just an ID.
+- **Flag change notices**: text is 80% of its former size, long text is no longer cut off, and notices shown together no longer overlap.
+- **Presets**: Enemy move forecast is on only in All on. All on no longer turns on Invincible in duels, Unhurt in battles or No ultimate cooldown; turn them on in Settings if you want them.
+
+## 3.5.0 (2026-11-04)
+
+- **Duel rework** (new setting, in testing, off by default): winning a counter gives an extra effect (such as a follow-up hit, locking one of the target's commands next round, making an ultimate miss, weakening the target, or a counter), and the same rules apply to both sides. Enemies also adapt to stamina, health and the command you keep repeating. A guide appears in your first duel. Balance may be off, and this mode may be rebuilt or removed later. Feedback is welcome.
+- **Scale duel enemies** (new setting, off by default): raises enemy health and stats at the start of a duel based on the total of your six main stats; strong enemies stay clearly stronger than ordinary ones.
+- **Better battle controls** (new setting; the Assist preset and up turn it on): fixes direction keys not responding after a stun; normal attacks turn to the nearest enemy, reach further and cost no stamina, with a ring at your feet showing their range; thrown knives aim at the nearest enemy, charged throws no longer miss, and kills shorten ultimate cooldowns, more so on a streak; your own ultimate covers a larger area; drops are picked up from further away; weapons, traps and poison clouds from your side no longer hurt you; battle results no longer cost Temperament or Contribution.
+- **Choose battle allies** (new setting; the Advanced and All on presets turn it on): the ultimate list on the battle start panel also offers allies with affection of 40 or more, not only those the story names.
+- **Enemy morale in battles** (new setting; the Assist preset and up turn it on): ordinary battles gain enemy morale; enemy deaths, your kills, kill streaks and defeating enemy commanders lower it, and at zero the enemy routs and you win. Battles with scripted events are not affected.
+- **Swap development items** (new setting, on by default): the forge and alchemy room development screens also list other branches of the same type, so you can swap without going back to the default item when your item level and sect size are high enough.
+- **Settings page**: presets stay pinned at the top while you scroll; the combat group is reordered with duels first and battles after.
+- **Languages**: filled in Korean, Japanese and English interface text and fixed untranslated Korean flag names (PR #42).
+
+## 3.4.2 (2026-11-03)
+
+- **Read marks on options and dice** (new setting; the Advanced and All on presets turn it on): dialogue options and dice lines show whether the lines that follow have been read (not seen, partly seen, seen).
+
+## 3.4.1 (2026-11-02)
+
+- **Settings apply right away**: option hints, picking dice results, the Lecture Hall display, skip turn, win now in duels and win now in battles take effect as soon as you change them, without a restart.
+- **Location story maps** (PR #41): stories at places such as daily life in Kongtong and Qingcheng, life away from home, Jiangling, Jinxiang Palace and Snow Mountain now have story maps too. Open them from the Now tab or from a flag or stat lookup; they are view-only and can't be jumped to. Lines merge near where they start and where they end, with fewer crossings and detours, and selecting a scene lights up only the lines that belong to it.
+- **Route map**: when one main quest plays over several sections, each later section of the same chapter gets its own stop, and its details list only that section. Main quests the game leaves unnumbered get a "chapter-section" number in front of their names; the prologue reads "Prologue N".
+- **Story map and route map**: they now carry on past travel scenes and random events on the road, instead of stopping at the journey.
+
+## 3.4.0 (2026-11-02)
+
+- **Memos** (new, F10 to show or hide): a small window floating over the game that keeps track of "get this done by that date". Search for a condition among stats, affection, talents, facilities, items, flags, and the layers and progress of martial arts, forging and alchemy, then set a target and a deadline; the window shows the current value, progress and periods left at all times, and notes at its top when a goal is met, stops being met, is about to be due or is overdue. It can be dragged, resized and collapsed, and its background follows **Tooltip opacity** in the settings (PR #40).
+- **Speed up battles too** (new setting, off by default): game speed also applies to battles. The UI now calls team battles "battles", as the game does.
+- **Older game versions**: the mod also runs on game versions from before the story log rework (1.0.6000.x); option hints and the Coffee Companion window no longer throw errors there. Save anywhere is turned on there only after the save and load code checks out; otherwise it says it needs 1.0.6001 or later.
+- **Pick random events**: besides the changes each event always makes, it now also lists the changes that depend on conditions, one branch per line with the condition and its current value; random events on the Now tab show the conditions too.
+- **Time-limited story reminder**: stories whose time limit is written into their conditions, rather than set as a trigger window, are reminded too.
+- **Story map**: quest trigger conditions are complete, and conditions are joined with "and" (they used to read "or"); a quest that triggers in several places is shown as one; connecting lines are laid out more clearly (PR #39).
+- **Route map**: fixed the game freezing for a few seconds on the first search.
+- **Numbers**: fixed numbers on the duel status screen and elsewhere wrapping to a second line and being cut off at lower resolutions.
+- **Conflict warning**: when another mod changes the same game code, the warning now says some features may not work and suggests removing it if something goes wrong, instead of telling you to remove it.
+
 ## 3.3.3 (2026-11-01)
 
 - **Time-limited story reminder** (new setting; Assist and higher presets turn it on): when a story whose conditions are met but hasn't triggered yet has 3 periods or fewer left in its window, the top left of the training map shows how many periods are left, until when, and where to go to trigger it; the Now tab marks these quests too.

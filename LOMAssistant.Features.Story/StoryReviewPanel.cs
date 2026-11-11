@@ -51,7 +51,10 @@ public partial class StoryReviewPanel : MonoBehaviour
 	private int _escFrame = -10;
 
 	/// <summary>窗口开着（或刚被 Esc、右键关掉的这一两帧）：Esc 和右键归窗口用，不交给游戏。</summary>
-	public static bool OwnsEscape
+	public static bool OwnsEscape => PanelOwnsEscape || LOMAssistant.Features.Extras.Gallery.IsOpen;
+
+	/// <summary>只看这个窗口自己，不算鉴赏。</summary>
+	internal static bool PanelOwnsEscape
 	{
 		get
 		{
@@ -165,7 +168,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			}
 			GamepadCursor.Update(_windowRect);
 		}
-		else
+		else if (!LOMAssistant.Features.Extras.Gallery.IsOpen)
 		{
 			GamepadCursor.Release();
 		}
@@ -658,7 +661,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 	}
 
 	/// <summary>横平竖直的线；dashed 为虚线。</summary>
-	private void Segment(Vector2 a, Vector2 b, Color color, float w, bool dashed)
+	private void Segment(Vector2 a, Vector2 b, Color color, float w, bool dashed, bool aligned = false)
 	{
 		var r = new Rect(Mathf.Min(a.x, b.x) - w / 2, Mathf.Min(a.y, b.y) - w / 2, Mathf.Abs(b.x - a.x) + w, Mathf.Abs(b.y - a.y) + w);
 		if (!dashed)
@@ -668,9 +671,13 @@ public partial class StoryReviewPanel : MonoBehaviour
 		}
 		bool across = r.width >= r.height;
 		float length = across ? r.width : r.height, dash = S(7), gap = S(5);
-		for (float t = 0; t < length; t += dash + gap)
+		// 合流线被拆分成高亮区间后，虚线仍按同一坐标对齐，不能从每一段重新起笔。
+		float offset = aligned ? (across ? r.x : r.y) % (dash + gap) : 0;
+		for (float t = -offset; t < length; t += dash + gap)
 		{
-			Fill(across ? new Rect(r.x + t, r.y, Mathf.Min(dash, length - t), r.height) : new Rect(r.x, r.y + t, r.width, Mathf.Min(dash, length - t)), color);
+			float start = Mathf.Max(0, t), end = Mathf.Min(length, t + dash);
+			if (end <= start) continue;
+			Fill(across ? new Rect(r.x + start, r.y, end - start, r.height) : new Rect(r.x, r.y + start, r.width, end - start), color);
 		}
 	}
 
@@ -909,7 +916,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 		string muted = onPaper ? "#73644F" : "#9A9286";
 		if (ending.Ways.Count == 0)
 		{
-			return $"<color={muted}>在剧本和决斗数据里都没找到触发的地方（可能由团战、小游戏等直接触发）</color>";
+			return $"<color={muted}>在剧本和决斗数据里都没找到触发的地方（可能由战役、小游戏等直接触发）</color>";
 		}
 		var lines = new List<string>();
 		foreach (StoryEndingWay way in ending.Ways.Take(4))
@@ -1152,7 +1159,7 @@ public partial class StoryReviewPanel : MonoBehaviour
 			GUILayout.Label(StoryDone(m) ? "<color=#2F6B3A><b>✓ 读完</b></color>" : "<color=#A3302A>" + string.Format("读过 {0}%", m.Read) + "</color>", _small, GUILayout.Width(S(80)));
 			GUILayout.Label("<b>" + m.Title + "</b>", _label);
 			GUILayout.FlexibleSpace();
-			if (GUILayout.Button("看剧情图", _button, GUILayout.Width(S(130))))
+			if (GUILayout.Button("看剧情图", _button, GUILayout.Width(TextWidth("看剧情图", _button, S(130)))))
 			{
 				OpenFlow(m);
 			}

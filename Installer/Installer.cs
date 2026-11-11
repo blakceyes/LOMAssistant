@@ -91,6 +91,9 @@ internal class InstallerForm : Form
 	private static readonly Color Muted = Color.FromArgb(120, 110, 98);
 
 	private readonly string _payload = AppDomain.CurrentDomain.BaseDirectory;
+	// 压缩包里随 Mod 带的更新内容（tools/pack.py 放进去）。安装器自己不带版本号、不带更新内容，
+	// 这样每次发版的安装器一个字节都不变，杀毒软件和 SmartScreen 按文件记的信誉才能一直累积
+	private const string PayloadChangelog = @"BepInEx\plugins\LOMAssistant\CHANGELOG";
 	private readonly TextBox _gameBox = new TextBox { ReadOnly = true, Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
 	private readonly Label _versionFrom = new Label { AutoSize = true, Font = new Font(FontName, 18f, FontStyle.Bold), ForeColor = Color.FromArgb(120, 110, 98), Margin = new Padding(0) };
 	private readonly Label _versionTo = new Label { AutoSize = true, Font = new Font(FontName, 18f, FontStyle.Bold), ForeColor = Color.FromArgb(140, 47, 38), Margin = new Padding(0) };
@@ -98,9 +101,9 @@ internal class InstallerForm : Form
 	private readonly RichTextBox _notes = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, DetectUrls = false, ScrollBars = RichTextBoxScrollBars.Vertical };
 	private readonly Button _tabNotes = new Button { Text = L("更新内容"), AutoSize = true, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0, 0, 4, 0), Padding = new Padding(8, 2, 8, 2) };
 	private readonly Button _tabLog = new Button { Text = L("日志"), AutoSize = true, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0), Padding = new Padding(8, 2, 8, 2) };
-	private string _changelog = ReadResource("Installer.CHANGELOG.md") ?? "";
+	private string _changelog = ReadPayload(PayloadChangelog + ".md") ?? "";
 	// 更新内容的译文（英、日、韩），没翻的版本照旧显示中文，见 InstallerText.Changelog
-	private string _changelogTranslated = ChangelogSuffix != null ? ReadResource("Installer.CHANGELOG." + ChangelogSuffix + ".md") : null;
+	private string _changelogTranslated = ChangelogSuffix != null ? ReadPayload(PayloadChangelog + "." + ChangelogSuffix + ".md") : null;
 	// 游戏目录路径里有中文等非英文字符时的提醒：BepInEx 预加载会失败（IL Compile Error），Mod 不生效
 	private readonly Label _pathWarning = new Label { AutoSize = true, ForeColor = Color.FromArgb(178, 43, 33), MaximumSize = new Size(560, 0), Margin = new Padding(0, 4, 0, 4), Visible = false };
 	private readonly Label _pluginsHint = new Label { AutoSize = true, ForeColor = Color.FromArgb(120, 110, 98), Text = L("勾选的移到「DisabledMods」，不删除") };
@@ -129,46 +132,54 @@ internal class InstallerForm : Form
 
 	[System.Runtime.InteropServices.DllImport("user32.dll")]
 	private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+
+	[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+	private struct NativeRect
+	{
+		public int Left, Top, Right, Bottom;
+	}
+
+	[System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+	private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out NativeRect value, int size);
+
+	/// <summary>窗口看得见的部分（屏幕坐标，不含四周看不见的拉伸边框）；取不到就用整个窗口。</summary>
+	private Rectangle VisibleBounds()
+	{
+		const int ExtendedFrameBounds = 9;
+		try
+		{
+			if (DwmGetWindowAttribute(Handle, ExtendedFrameBounds, out NativeRect r, System.Runtime.InteropServices.Marshal.SizeOf(typeof(NativeRect))) == 0
+				&& r.Right > r.Left && r.Bottom > r.Top)
+			{
+				return Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+			}
+		}
+		catch (Exception)
+		{
+			// 老系统没有 dwmapi：用整个窗口
+		}
+		return Bounds;
+	}
 	private readonly string _diagLog = DiagLogArg;
 
 	public InstallerForm(string game, string autoLog)
 	{
 		_autoLog = autoLog;
 		Text = L("咖啡伴侣 安装器");
+		// 标题栏、任务栏用 exe 自己的图标（编译时 -win32icon 嵌进去的 app.ico）
+		try
+		{
+			Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+		}
+		catch
+		{
+		}
 		Font = new Font(FontName, 10f);
 		AutoScaleMode = AutoScaleMode.Dpi;
-		ClientSize = new Size(1280, 900);
-		MinimumSize = new Size(900, 680);
+		ClientSize = new Size(1280, 720);
+		MinimumSize = new Size(900, 600);
 		StartPosition = FormStartPosition.CenterScreen;
 		BackColor = Paper;
-
-		// 顶部：banner（从 README 头图裁的一条），铺满宽度、上下多出来的裁掉，不留黑边
-		Image bannerImage = LoadBanner();
-		var banner = new Panel { Dock = DockStyle.Top, Height = 280, BackColor = Ink };
-		banner.Paint += (sender, e) =>
-		{
-			if (bannerImage == null)
-			{
-				return;
-			}
-			float scale = Math.Max((float)banner.Width / bannerImage.Width, (float)banner.Height / bannerImage.Height);
-			float w = bannerImage.Width * scale, h = bannerImage.Height * scale;
-			e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-			e.Graphics.DrawImage(bannerImage, (banner.Width - w) / 2, (banner.Height - h) / 2, w, h);
-		};
-		banner.Resize += delegate { banner.Invalidate(); };
-		// 窗口矮（小屏幕、笔记本）时 banner 跟着变矮，把高度让给「其他 Mod」列表：左栏除列表外约占 460，列表想要 220，剩下的给 banner（80 到 280）
-		void FitBanner()
-		{
-			float dpi = DeviceDpi / 96f;
-			int height = (int)(Math.Max(80f, Math.Min(280f, ClientSize.Height / dpi - 680f)) * dpi);
-			if (banner.Height != height)
-			{
-				banner.Height = height;
-			}
-		}
-		Resize += delegate { FitBanner(); };
-		Load += delegate { FitBanner(); };
 
 		// 左栏：游戏目录、版本、其他 Mod、安装按钮
 		var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, BackColor = Paper, Margin = new Padding(0, 0, 14, 0) };
@@ -256,7 +267,6 @@ internal class InstallerForm : Form
 		ShowTab(true);
 
 		Controls.Add(body);
-		Controls.Add(banner);
 
 		_gameBox.TabStop = false;
 		ActiveControl = _install;
@@ -338,7 +348,16 @@ internal class InstallerForm : Form
 						PrintWindow(Handle, hdc, 2);
 						g.ReleaseHdc(hdc);
 					}
-					bitmap.Save(ShotArg, System.Drawing.Imaging.ImageFormat.Png);
+					// Windows 10/11 的窗口四周有一圈看不见的拉伸边框，加上系统画的细边框线，PrintWindow 都画成黑边：
+					// 上面从看得见的窗口顶边（留着标题栏）开始，左、右、下贴着内容区裁
+					Rectangle visible = VisibleBounds();
+					Rectangle client = RectangleToScreen(ClientRectangle);
+					var crop = Rectangle.FromLTRB(client.Left - Left, visible.Top - Top, client.Right - Left, client.Bottom - Top);
+					crop.Intersect(new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+					using (Bitmap shot = crop.Width > 0 && crop.Height > 0 ? bitmap.Clone(crop, bitmap.PixelFormat) : (Bitmap)bitmap.Clone())
+					{
+						shot.Save(ShotArg, System.Drawing.Imaging.ImageFormat.Png);
+					}
 				}
 				Close();
 			};
@@ -346,34 +365,13 @@ internal class InstallerForm : Form
 		}
 	}
 
-	private static string ReadResource(string name)
+	/// <summary>读安装器旁边（解压出来的压缩包里）的文本文件。单独下载的安装器旁边没有，返回 null，等联网读 GitHub 上的。</summary>
+	private static string ReadPayload(string relative)
 	{
 		try
 		{
-			using (Stream stream = typeof(InstallerForm).Assembly.GetManifestResourceStream(name))
-			{
-				if (stream == null)
-				{
-					return null;
-				}
-				using (var reader = new StreamReader(stream, Encoding.UTF8))
-				{
-					return reader.ReadToEnd().Replace("\r\n", "\n");
-				}
-			}
-		}
-		catch
-		{
-			return null;
-		}
-	}
-
-	private static Image LoadBanner()
-	{
-		try
-		{
-			Stream stream = typeof(InstallerForm).Assembly.GetManifestResourceStream("Installer.banner." + BannerSuffix + ".jpg");
-			return stream == null ? null : Image.FromStream(stream);
+			string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relative);
+			return File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8).Replace("\r\n", "\n") : null;
 		}
 		catch
 		{
@@ -1243,7 +1241,25 @@ internal class InstallerForm : Form
 			input.CopyTo(output);
 		}
 		string extracted = Path.Combine(temp, "files");
-		ZipFile.ExtractToDirectory(zip, extracted, Encoding.UTF8);
+		// 只解出要装进游戏的文件：压缩包里的安装器 exe 解到临时文件夹会被杀毒软件当成木马隔离
+		using (ZipArchive archive = ZipFile.Open(zip, ZipArchiveMode.Read, Encoding.UTF8))
+		{
+			foreach (ZipArchiveEntry entry in archive.Entries)
+			{
+				string rel = entry.FullName.Replace('/', '\\');
+				if (entry.Name.Length == 0 || !IsPayload(rel))
+				{
+					continue;
+				}
+				string target = Path.GetFullPath(Path.Combine(extracted, rel));
+				if (!target.StartsWith(Path.GetFullPath(extracted) + "\\", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+				Directory.CreateDirectory(Path.GetDirectoryName(target));
+				entry.ExtractToFile(target, true);
+			}
+		}
 		if (DllVersion(Path.Combine(extracted, ModDll)) == null)
 		{
 			throw new InvalidDataException(L("下载的压缩包里没有 Mod 文件"));
@@ -1317,6 +1333,9 @@ internal class InstallerForm : Form
 
 	private static readonly string[] PayloadFiles = { "winhttp.dll", "doorstop_config.ini", ".doorstop_version", "changelog.txt" };
 	private static readonly string[] PayloadFolders = { @"BepInEx\core", @"BepInEx\plugins\LOMAssistant" };
+
+	private static bool IsPayload(string rel) => PayloadFiles.Any(name => rel.Equals(name, StringComparison.OrdinalIgnoreCase))
+		|| PayloadFolders.Any(dir => rel.StartsWith(dir + "\\", StringComparison.OrdinalIgnoreCase));
 
 	private int CopyTree(string source, string dest)
 	{

@@ -1,9 +1,14 @@
-"""打发布包：把 release/pkg 打成 LOMAssistant.zip、release/咖啡伴侣 vX.Y.Z.zip 和不带安装器的 LOMAssistant-Nexus.zip。
+"""打发布包：把 release/pkg 打成 LOMAssistant.zip、release/咖啡伴侣 vX.Y.Z.zip 和不带安装器的 LOMAssistant-NoInstaller.zip。
 
-用法（仓库根目录）：python -I -X utf8 tools/pack.py 2.8.3
-事先要编译好 Mod（./build.sh）和安装器（./Installer/build-installer.sh），并把 bin/LOMAssistant.dll 复制到
-release/pkg/BepInEx/plugins/LOMAssistant/。release/ 和仓库在同一个上级文件夹里。
+用法（仓库根目录）：python -I -X utf8 tools/pack.py 2.8.3 [--new-installer]
+事先要编译好 Mod（./build.sh），并把 bin/LOMAssistant.dll 复制到 release/pkg/BepInEx/plugins/LOMAssistant/。
+release/ 和仓库在同一个上级文件夹里。
+
+安装器每次发版都用同一个文件（release/installer/ 里存的那份），不重新编译：杀毒软件和 SmartScreen 按文件记信誉，
+文件不变，下载、运行的次数才能一直累积。只有安装器代码改了，才先 ./Installer/build-installer.sh，
+再加 --new-installer 把新编译的换进去（信誉从头开始）。
 """
+import hashlib
 import os
 import shutil
 import subprocess
@@ -13,6 +18,7 @@ import zipfile
 repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 base = os.path.dirname(repo)
 version = sys.argv[1]
+new_installer = '--new-installer' in sys.argv[2:]
 root = os.path.join(base, 'release', 'pkg')
 
 INSTALLER = '咖啡伴侣安装器 Installer.exe'
@@ -30,11 +36,28 @@ for old in ['咖啡伴侣安装器.exe']:
     if os.path.exists(os.path.join(root, old)):
         os.remove(os.path.join(root, old))
 
-# 安装器用仓库里最新编译的（Installer/build-installer.sh 的输出）
-shutil.copyfile(os.path.join(repo, 'Installer', 'bin', INSTALLER), os.path.join(root, INSTALLER))
+# 安装器用 release/installer/ 里固定的那份；还没有、或加了 --new-installer 时，才换成 Installer/bin 里新编译的
+frozen = os.path.join(base, 'release', 'installer', INSTALLER)
+if new_installer or not os.path.exists(frozen):
+    os.makedirs(os.path.dirname(frozen), exist_ok=True)
+    shutil.copyfile(os.path.join(repo, 'Installer', 'bin', INSTALLER), frozen)
+    print('installer: replaced with the new build')
+shutil.copyfile(frozen, os.path.join(root, INSTALLER))
+print('installer sha256', hashlib.sha256(open(frozen, 'rb').read()).hexdigest())
+
+# 更新内容随 Mod 放进包里：安装器没联网时从这里读（安装器自己不带，见 Installer.cs 的 PayloadChangelog）
+plugin = os.path.join(root, 'BepInEx', 'plugins', 'LOMAssistant')
+for name in ['CHANGELOG.md', 'CHANGELOG.en.md', 'CHANGELOG.ja.md', 'CHANGELOG.ko.md']:
+    shutil.copyfile(os.path.join(repo, name), os.path.join(plugin, name))
 for readme, manual in MANUALS:
     subprocess.run([sys.executable, '-I', '-X', 'utf8', os.path.join(repo, 'tools', 'readme-to-txt.py'),
                     os.path.join(repo, readme), os.path.join(root, manual)], check=True)
+# 不带安装器的包用的说明：安装一节不叫人双击安装器（生成到 release/pkg-noinstaller，只放说明）
+noinst = os.path.join(base, 'release', 'pkg-noinstaller')
+os.makedirs(noinst, exist_ok=True)
+for readme, manual in MANUALS:
+    subprocess.run([sys.executable, '-I', '-X', 'utf8', os.path.join(repo, 'tools', 'readme-to-txt.py'),
+                    os.path.join(repo, readme), os.path.join(noinst, manual), '--no-installer'], check=True)
 
 out = os.path.join(base, 'LOMAssistant.zip')
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -49,11 +72,16 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
             z.write(os.path.join(d, f), rel + '/' + f)
 shutil.copyfile(out, os.path.join(base, 'release', '咖啡伴侣 v' + version + '.zip'))
 
-# Nexus 上用的包：不带安装器 exe（Nexus 会把含 exe 的上传自动隔离），其余和完整包一样，手动解压安装
-nexus = os.path.join(base, 'LOMAssistant-Nexus.zip')
+# 不带安装器 exe 的包：只传 Nexus（Nexus 会把含 exe 的上传自动隔离），说明换成不带安装器的版本，其余和完整包一样
+nexus = os.path.join(base, 'LOMAssistant-NoInstaller.zip')
+manual_names = {m for _, m in MANUALS}
 with zipfile.ZipFile(out) as src, zipfile.ZipFile(nexus, 'w', zipfile.ZIP_DEFLATED) as dst:
     for item in src.infolist():
-        if not item.filename.endswith('.exe'):
+        if item.filename.endswith('.exe'):
+            continue
+        if item.filename in manual_names:
+            dst.writestr(item, open(os.path.join(noinst, item.filename), 'rb').read())
+        else:
             dst.writestr(item, src.read(item.filename))
 print('nexus zip', os.path.getsize(nexus), 'bytes')
 

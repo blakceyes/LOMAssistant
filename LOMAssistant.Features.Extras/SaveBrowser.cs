@@ -37,6 +37,9 @@ public class SaveBrowser : MonoBehaviour
 
 	private const string NewGame = "新游戏";
 
+	/// <summary>在标题画面打开的读档页：「开始新游戏」放最上面；游戏里读档时放最下面，免得想读最新存档时误点开新游戏。</summary>
+	private static bool AtTitle => UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Title";
+
 	private static readonly (string Category, string Name)[] AutoGroups = { ("auto", "剧情"), ("auto_free", "养成"), ("auto_battle", "战斗") };
 
 	/// <summary>心上人（游戏数值 lover）对应的立绘。</summary>
@@ -75,7 +78,7 @@ public class SaveBrowser : MonoBehaviour
 	private Font _calligraphy, _serif;
 	private Button _buttonTemplate;
 	private int _tab; // 读档页：0 手动，1 自动
-	private Button _sortButton; // 读档页手动存档的排序：按栏位 / 最近在上
+	private Button _sortButton; // 读档页手动存档、存档页的排序：按栏位 / 最近在上 / 原版（两页共用一个设置）
 	private readonly List<Button> _tabs = new List<Button>();
 	private readonly List<(Entry Entry, Button Button)> _rows = new List<(Entry, Button)>();
 	private int _selected;
@@ -227,22 +230,23 @@ public class SaveBrowser : MonoBehaviour
 		float margin = 56f, top = 150f, bottom = 40f, gap = 36f;
 		float listWidth = Mathf.Round((size.x - margin * 2 - gap) * 0.52f);
 		float detailX = margin + listWidth + gap;
-		float listTop = top + (_isLoad ? 70f : 10f);
+		float listTop = top + 70f;
 		if (_isLoad)
 		{
 			BuildTabs(margin, top);
-			// 手动存档页列表右上角：排序切换（配置 SaveListOrder，按栏位 → 最近在上 → 原版：按栏位、空栏位也列出），字样和「删除」一样，不加边框
-			_sortButton = TextButton(_root, "排序：按栏位");
-			Place((RectTransform)_sortButton.transform, margin + listWidth - 240f, top + 16f, 240f, 40f);
-			_sortButton.GetComponentInChildren<Text>().fontSize = 24;
-			_sortButton.GetComponentInChildren<Text>().alignment = TextAnchor.MiddleRight;
-			_sortButton.onClick.AddListener(() =>
-			{
-				ConfigManager.SaveListOrder.Value = (ConfigManager.SaveListOrder.Value + 1) % 3;
-				_selected = -1;
-				Refresh();
-			});
 		}
+		// 列表右上角：排序切换（配置 SaveListOrder，按栏位 → 最近在上 → 原版：按栏位、空栏位也列出），读档页手动存档和存档页都有、共用一个设置；
+		// 字样和「删除」一样，不加边框
+		_sortButton = TextButton(_root, "排序：按栏位");
+		Place((RectTransform)_sortButton.transform, margin + listWidth - 240f, top + 16f, 240f, 40f);
+		_sortButton.GetComponentInChildren<Text>().fontSize = 24;
+		_sortButton.GetComponentInChildren<Text>().alignment = TextAnchor.MiddleRight;
+		_sortButton.onClick.AddListener(() =>
+		{
+			ConfigManager.SaveListOrder.Value = (ConfigManager.SaveListOrder.Value + 1) % 3;
+			_selected = -1;
+			Refresh();
+		});
 		BuildList(margin, listTop, listWidth, size.y - listTop - bottom);
 		BuildDetail(detailX, top, size.x - detailX - margin, size.y - top - bottom);
 		FileLogger.Log($"[存档界面] {(_isLoad ? "读档" : "存档")}页已换成新界面（{size.x:0}x{size.y:0}）");
@@ -505,7 +509,7 @@ public class SaveBrowser : MonoBehaviour
 			}
 			if (_sortButton != null)
 			{
-				_sortButton.gameObject.SetActive(_isLoad && _tab == 0);
+				_sortButton.gameObject.SetActive(!_isLoad || _tab == 0);
 				int order = ConfigManager.SaveListOrder.Value;
 				_sortButton.GetComponentInChildren<Text>().text = order == 1 ? "排序：最近在上" : order == 2 ? "排序：原版" : "排序：按栏位";
 			}
@@ -537,7 +541,7 @@ public class SaveBrowser : MonoBehaviour
 
 	private List<Entry> ManualEntries(bool includeEmpty) => SortManual(ManualEntriesBySlot(includeEmpty));
 
-	// 设置里选了「最近在上」：「开始新游戏」仍在最上面，有存档的按保存时间从新到旧，空栏位放最后（按栏位号）。
+	// 设置里选了「最近在上」：「开始新游戏」在标题画面放最上面、游戏里放最下面，有存档的按保存时间从新到旧，空栏位放最后（按栏位号）。
 	// 存档页最上面先放第一个空栏位，存新档不用滚到最底下，也不会只能覆盖最新那个
 	private static List<Entry> SortManual(List<Entry> list)
 	{
@@ -546,7 +550,8 @@ public class SaveBrowser : MonoBehaviour
 			return list;
 		}
 		Entry firstEmpty = list.FirstOrDefault(e => e.Caption != NewGame && e.Data == null);
-		return list.OrderBy(e => e.Caption == NewGame || e == firstEmpty ? 0 : e.Data != null ? 1 : 2)
+		bool atTitle = AtTitle;
+		return list.OrderBy(e => e.Caption == NewGame ? (atTitle ? 0 : 3) : e == firstEmpty ? 0 : e.Data != null ? 1 : 2)
 			.ThenByDescending(e => e.Caption != NewGame && e.Data != null ? e.Data.TimeTick : 0L)
 			.ToList();
 	}
@@ -557,6 +562,7 @@ public class SaveBrowser : MonoBehaviour
 		if (_isLoad)
 		{
 			LoadSlotPanel[] slots = Traverse.Create(_panel).Field("_saveSlots").GetValue<LoadSlotPanel[]>() ?? new LoadSlotPanel[0];
+			Entry newGame = null;
 			for (int i = 0; i < slots.Length; i++)
 			{
 				LoadSlotPanel slot = slots[i];
@@ -564,19 +570,23 @@ public class SaveBrowser : MonoBehaviour
 				GameSave data = SaveSystem.Instance.GetSaveData(name);
 				if (data == null)
 				{
-					// 原来的界面点空栏位就是开新游戏：最上面放一条「开始新游戏」，用第一个空栏位；
+					// 原来的界面点空栏位就是开新游戏：放一条「开始新游戏」，用第一个空栏位，标题画面放最上面、游戏里放最下面；
 					// 选了「含空栏位」就和原版一样，每个空栏位留在原位，点哪格就在哪格开新游戏
 					if (ConfigManager.SaveListOrder.Value == 2)
 					{
 						list.Add(new Entry { Slot = name, Label = SlotLabel(name), Caption = NewGame, Compact = true, Primary = () => slot.OnTitleClick() });
 					}
-					else if (!list.Any(e => e.Caption == NewGame))
+					else if (newGame == null)
 					{
-						list.Insert(0, new Entry { Slot = name, Label = SlotLabel(name), Caption = NewGame, Compact = true, Primary = () => slot.OnTitleClick() });
+						newGame = new Entry { Slot = name, Label = SlotLabel(name), Caption = NewGame, Compact = true, Primary = () => slot.OnTitleClick() };
 					}
 					continue;
 				}
 				list.Add(new Entry { Slot = name, Label = SlotLabel(name), Data = data, CanNote = true, CanDelete = true, Primary = () => slot.OnTitleClick() });
+			}
+			if (newGame != null)
+			{
+				list.Insert(AtTitle ? 0 : list.Count, newGame);
 			}
 		}
 		else

@@ -42,9 +42,13 @@ public partial class StoryReviewPanel
 		public readonly List<(string Way, string Effects)> Ways = new List<(string, string)>();
 		public readonly List<NowEvent> Events = new List<NowEvent>();
 		public readonly List<NowMission> Missions = new List<NowMission>();
+		/// <summary>正在打的这场战斗，和它的输赢后果、回合事件。</summary>
+		public UnityEngine.Object Fight;
+		public List<(string Title, string Text)> FightReport = new List<(string, string)>();
 	}
 
 	private NowSnapshot _now;
+	private int _nowAtlas = -1;
 	private Vector2 _nowScroll;
 
 	private void DrawNow(Rect r)
@@ -55,8 +59,14 @@ public partial class StoryReviewPanel
 			GUI.Label(new Rect(r.x, r.y, r.width, S(40)), "读档进入游戏后才有内容", _muted);
 			return;
 		}
-		if (_now == null || _now.Script != (OptionInfoPatch.LastScriptKey ?? ""))
+		// 无名任务的标题来自整理好的剧情数据：打开这一页就开始整理，读完重新生成
+		if (!StoryAtlas.Ready && !StoryAtlas.Building && StoryAtlas.Status.Length == 0)
 		{
+			StoryAtlas.Start();
+		}
+		if (_now == null || _now.Script != (OptionInfoPatch.LastScriptKey ?? "") || _nowAtlas != StoryAtlas.Version || _now.Fight != LOMAssistant.Features.Combat.FightForecast.Current)
+		{
+			_nowAtlas = StoryAtlas.Version;
 			_now = BuildNow();
 		}
 		if (GUI.Button(new Rect(r.xMax - S(130), r.y, S(130), S(36)), "刷新", _button))
@@ -68,7 +78,10 @@ public partial class StoryReviewPanel
 		{
 			bool owned = !StoryAtlas.Ready || StoryAtlas.Owner.ContainsKey(_now.Story);
 			GUI.enabled = owned;
-			if (GUI.Button(new Rect(r.xMax - S(130) - S(10) - S(220), r.y, S(220), S(36)), owned ? "在剧情图里看" : "这一段不属于任务", owned ? _primary : _button))
+			string flowText = owned ? "在剧情图里看" : "这一段不属于任务";
+			GUIStyle flowStyle = owned ? _primary : _button;
+			float flowWidth = TextWidth(flowText, flowStyle, S(220));
+			if (GUI.Button(new Rect(r.xMax - S(130) - S(10) - flowWidth, r.y, flowWidth, S(36)), flowText, flowStyle))
 			{
 				_flowJumpScript = _now.Story;
 				_tab = 2;
@@ -80,6 +93,19 @@ public partial class StoryReviewPanel
 		GUILayout.BeginArea(area);
 		_nowScroll = GUILayout.BeginScrollView(_nowScroll);
 		bool any = false;
+		if (_now.FightReport.Count > 0)
+		{
+			any = true;
+			GUILayout.Label("这场战斗", _heading);
+			foreach (var (title, text) in _now.FightReport)
+			{
+				GUILayout.BeginVertical(_card);
+				GUILayout.Label(title, _rich);
+				GUILayout.Label(Cached((title, text), () => ColorDeltas(text)), _muted);
+				GUILayout.EndVertical();
+			}
+			GUILayout.Space(S(10));
+		}
 		if (_now.Options.Count > 0)
 		{
 			any = true;
@@ -228,6 +254,15 @@ public partial class StoryReviewPanel
 		}
 		try
 		{
+			now.Fight = LOMAssistant.Features.Combat.FightForecast.Current;
+			now.FightReport = LOMAssistant.Features.Combat.FightForecast.Report();
+		}
+		catch (Exception e)
+		{
+			FileLogger.LogWarning("此刻页读战斗信息失败: " + e.Message);
+		}
+		try
+		{
 			if (now.Script.Length > 0 && StoryManager.Instance != null)
 			{
 				foreach (KeyValuePair<string, List<LuaParse.Action>> option in LuaParser.Instance.ExtractOptionActionsFromLua(now.Script))
@@ -237,7 +272,7 @@ public partial class StoryReviewPanel
 					string result = RichText.Strip(OptionInfoPatch.OptionNote(option.Key)).Trim();
 					if (result.Length == 0)
 					{
-						result = RichText.Strip(TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(option.Value))).Trim();
+						result = LuaParser.DisplayDescription(option.Value).Trim();
 					}
 					// 选项文字里已经被选项提示接上了「(结果)」，去掉，结果单独写在下面
 					if (result.Length > 0 && text.EndsWith(result + ")"))
@@ -289,7 +324,7 @@ public partial class StoryReviewPanel
 					Main = true,
 					Title = TextConverter.ToSimplified(mainTitle.Replace("\n", " ")),
 					Desc = OnPaper(TextConverter.ToSimplified(mainDesc).Trim()),
-					Place = place == "無" ? "" : place,
+					Place = main.Position == PositionType.無 ? "" : place,
 					Ready = missions != null && missions.MainMissionStart && missions.MainCheckData == main && !string.IsNullOrEmpty(main.StartScript),
 					Left = DeadlineReminder.Left(main)
 				});
@@ -309,7 +344,7 @@ public partial class StoryReviewPanel
 				{
 					Title = TextConverter.ToSimplified(pair.Value.Item1.Replace("\n", " ")),
 					Desc = OnPaper(TextConverter.ToSimplified(pair.Value.Item2).Trim()),
-					Place = place == "無" ? "" : place,
+					Place = check.Position == PositionType.無 ? "" : place,
 					Ready = active != null && active.Values.Contains(check) && !string.IsNullOrEmpty(check.StartScript),
 					Left = DeadlineReminder.Left(check)
 				});

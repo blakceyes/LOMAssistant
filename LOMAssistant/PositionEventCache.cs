@@ -16,8 +16,6 @@ public class PositionEventCache
 
 	private readonly Dictionary<PositionEventData, string> eventKeyCache;
 
-	private readonly Dictionary<PositionEventData, string> eventDescCache;
-
 	private readonly Dictionary<PositionEventData, string> scriptPrefixCache;
 
 	public static PositionEventCache Instance => instance.Value;
@@ -26,7 +24,6 @@ public class PositionEventCache
 	{
 		positionEventDataCache = new Dictionary<string, List<PositionEventData>>();
 		eventKeyCache = new Dictionary<PositionEventData, string>();
-		eventDescCache = new Dictionary<PositionEventData, string>();
 		scriptPrefixCache = new Dictionary<PositionEventData, string>();
 	}
 
@@ -57,12 +54,7 @@ public class PositionEventCache
 
 	public string GetPositionEventDesc(PositionEventData eventData)
 	{
-		if (!eventDescCache.TryGetValue(eventData, out var value))
-		{
-			value = GenerateStaticDesc(eventData);
-			eventDescCache[eventData] = value;
-		}
-		return GenerateDynamicDesc(eventData) + "\n" + value;
+		return GenerateDynamicDesc(eventData) + "\n" + GenerateStaticDesc(eventData);
 	}
 
 	public int GetPositionEventRate(PositionEventData eventData)
@@ -252,15 +244,27 @@ public class PositionEventCache
 		return scriptPrefixCache.TryGetValue(eventData, out var prefix) ? prefix + "_" + eventData.ResultType : null;
 	}
 
-	/// <summary>事件一定会带来的变化（不含条件分支），一行。</summary>
-	public string GetCertainEffects(PositionEventData eventData)
+	/// <summary>随机事件选择窗里的说明：一定会有的变化；有条件分支（「后续」里按旗标、数值分开走的加减）的，再写一行「某些条件下」，和「此刻」页一样。</summary>
+	public string GetEffects(PositionEventData eventData)
 	{
 		if (!scriptPrefixCache.TryGetValue(eventData, out var prefix))
 		{
 			return "";
 		}
 		List<LOMAssistant.LuaParse.Action> actions = LuaParser.Instance.ExtractActionsFromLua(prefix + "_" + eventData.ResultType);
-		return TextConverter.ToSimplifiedUnlessJapanese(LuaParser.Description(actions.Where((LOMAssistant.LuaParse.Action a) => !a.IsConditional).ToList()));
+		string certain = LuaParser.Description(actions.Where((LOMAssistant.LuaParse.Action a) => !a.IsConditional).ToList());
+		List<string> branches = LuaParser.ConditionalLines(actions);
+		if (branches.Count == 0)
+		{
+			return TextConverter.ToSimplifiedUnlessJapanese(certain);
+		}
+		var lines = new List<string>();
+		if (!string.IsNullOrEmpty(certain))
+		{
+			lines.Add("一定触发：" + certain);
+		}
+		lines.AddRange(branches);
+		return TextConverter.ToSimplifiedUnlessJapanese(string.Join("\n", lines.ToArray()));
 	}
 
 	private string GenerateStaticDesc(PositionEventData eventData)
@@ -274,11 +278,15 @@ public class PositionEventCache
 		string luaScriptName = value + "_" + eventData.ResultType;
 		List<LOMAssistant.LuaParse.Action> source = LuaParser.Instance.ExtractActionsFromLua(luaScriptName);
 		List<LOMAssistant.LuaParse.Action> actions = source.Where((LOMAssistant.LuaParse.Action a) => !a.IsConditional).ToList();
-		List<LOMAssistant.LuaParse.Action> actions2 = source.Where((LOMAssistant.LuaParse.Action a) => a.IsConditional).ToList();
 		string text = LuaParser.Description(actions);
-		string text2 = LuaParser.Description(actions2);
-		stringBuilder.AppendLine("    一定触发：" + text);
-		stringBuilder.AppendLine("    某些条件下：" + text2);
+		if (!string.IsNullOrEmpty(text))
+		{
+			stringBuilder.AppendLine("    一定触发：" + text);
+		}
+		foreach (string line in LuaParser.ConditionalLines(source))
+		{
+			stringBuilder.AppendLine("    " + line);
+		}
 		return stringBuilder.ToString();
 	}
 

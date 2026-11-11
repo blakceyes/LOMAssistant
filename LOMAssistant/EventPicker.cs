@@ -17,7 +17,7 @@ namespace LOMAssistant;
 /// 随机事件自选：剧本走到 checkpointmanager.Position（工作、闲逛等按权重抽一个事件）时先停下，
 /// 列出这次满足条件的事件，选一个就触发它，也可以选「随机」照游戏原本的概率抽。
 /// 出现条件没满足的事件折叠在下面（写明要什么条件），点了也照样触发。
-/// 不带随机值的分支判断，打开「判断前选走哪一支」时也在这里停下，列出每一支的条件、对白看过没（见 BranchPicker）。
+/// 不带随机值的分支判断，打开「分支判定手动选择」时也在这里停下，列出每一支的条件、对白看过没（见 BranchPicker）。
 /// 条件里带随机值的分支判断（checkpointmanager.Switch，比如飞天门修炼时「随机值 ≤ 小梅好感」就被小梅拉去跑步）也一样停下，
 /// 列出这次能走到的几条路和概率，选哪条就把这次判断里的随机值定成让它成立的数（其他条件照常判断，见 SwitchRandom）。
 /// 停下的办法参考赵活系统（Toufff，MIT）：把剧本里的调用包一层，在 Lua 协程里等待，选完再执行原调用。
@@ -81,7 +81,7 @@ public class EventPicker : MonoBehaviour
 
 	/// <summary>正在问的是分支判断（不是事件池）时，判断名。</summary>
 	private static string _switch;
-	/// <summary>正在问的是「判断前选走哪一支」（不带随机值的分支判断），Choice.Forced 是第几支。</summary>
+	/// <summary>正在问的是「分支判定手动选择」（不带随机值的分支判断），Choice.Forced 是第几支。</summary>
 	private static bool _branchMode;
 	/// <summary>
 	/// 这段剧本里已经选过的判断（判断名 → 第几支，0 是按游戏判断）。同一个判断在一段剧本里常出现好几次（开场按它摆立绘、后面按它接对白），
@@ -185,13 +185,13 @@ public class EventPicker : MonoBehaviour
 			foreach (PositionEventData data in PositionEventCache.Instance.GetPositionEvents(pool))
 			{
 				int rate = data.GetRate();
-				// 条件没满足的只在设置里打开「强行触发条件没满足的事件」时列出
+				// 条件没满足的只在设置里打开「强制触发未满足条件的事件」时列出
 				string condition = rate > 0 || !ConfigManager.ForceUnmetEvents.Value ? null : UnmetCondition(data);
 				if (rate <= 0 && condition == null)
 				{
 					continue;
 				}
-				string effects = PositionEventCache.Instance.GetCertainEffects(data);
+				string effects = PositionEventCache.Instance.GetEffects(data);
 				var choice = new Choice { Data = data, Key = data.name, Rate = rate, Name = TextConverter.ToSimplified(DataHelper.GetEventName(data)), Effects = effects, Unread = MapEventHints.Unread(PositionEventCache.Instance.ResultScript(data)) };
 				if (condition != null)
 				{
@@ -212,6 +212,7 @@ public class EventPicker : MonoBehaviour
 			}
 			Choices.AddRange(unmet);
 			_state = State.Waiting;
+			MarkRollback();
 			_pool = pool;
 			_switch = null;
 			_branchMode = false;
@@ -255,7 +256,7 @@ public class EventPicker : MonoBehaviour
 
 	/// <summary>
 	/// 剧本每帧问一次：这个分支判断要不要停下来等选。条件里有随机值、能走到两条以上的路时按「随机事件自选」问；
-	/// 不带随机值的按「判断前选走哪一支」问（换一支有新内容才问）。
+	/// 不带随机值的按「分支判定手动选择」问（换一支有新内容才问）。
 	/// </summary>
 	private static bool WaitSwitch(string name, string script)
 	{
@@ -290,6 +291,7 @@ public class EventPicker : MonoBehaviour
 				Choices.Add(new Choice { Key = SwitchRandom.RuleKey(name, arm.Branch), Forced = arm.Value, Rate = arm.Count, Name = label, Effects = condition });
 			}
 			_state = State.Waiting;
+			MarkRollback();
 			_pool = pool;
 			_switch = name;
 			_branchMode = false;
@@ -309,7 +311,7 @@ public class EventPicker : MonoBehaviour
 		}
 	}
 
-	// 判断前选走哪一支：每一支写成「第几支　会走这一支　看过没」，下面一行是条件（满不满足、现在的值）和接到哪里
+	// 分支判定手动选择：每一支写成「第几支　会走这一支　看过没」，下面一行是条件（满不满足、现在的值）和接到哪里
 	private static bool WaitBranch(string name, string script, string pool)
 	{
 		if (Picked.TryGetValue(name, out int picked))
@@ -336,6 +338,7 @@ public class EventPicker : MonoBehaviour
 			Choices.Add(new Choice { Key = SwitchRandom.RuleKey(name, arm.Branch), Forced = arm.Branch, Name = label, Effects = detail, Exits = arm.Exits });
 		}
 		_state = State.Waiting;
+		MarkRollback();
 		_pool = pool;
 		_switch = name;
 		_branchMode = true;
@@ -343,6 +346,19 @@ public class EventPicker : MonoBehaviour
 		StopSkip();
 		FileLogger.Log($"[分支] {name}：{arms.Count} 支，游戏会走第 {predicted} 支，等待选择");
 		return true;
+	}
+
+	// 弹出选择框时记一个分支回退点（弹框前一句）：选一支看完后按 F4 回到这里，再选另一支
+	private static void MarkRollback()
+	{
+		try
+		{
+			AnytimeSave.Instance?.MarkBranchPoint();
+		}
+		catch (System.Exception ex)
+		{
+			FileLogger.LogWarning("[分支] 记分支回退点失败: " + ex.Message);
+		}
 	}
 
 	// 弹出选择框时停住快进（按住 Ctrl、一键快进已读），选完要看的剧情不会被快进带过去

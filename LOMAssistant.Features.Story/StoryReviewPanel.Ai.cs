@@ -10,7 +10,7 @@ using UnityEngine;
 namespace LOMAssistant.Features.Story;
 
 /// <summary>
-/// 「AI」页：AI 攻略问答。没配好服务商时先显示设置（服务商、地址、模型、Key、剧透程度、测试连接），配好后显示对话。
+/// 「AI」页：AI 攻略问答。没配好服务商时先显示设置（服务商、Key、地址、模型、测试连接），配好后显示对话。
 /// AI 的回答本来就是界面语言写的，画的时候加 Verbatim 记号，不再查表翻译。
 /// </summary>
 public partial class StoryReviewPanel
@@ -21,6 +21,8 @@ public partial class StoryReviewPanel
 	private Vector2 _aiScroll, _aiSetupScroll;
 	private bool _aiSetup;
 	private string _aiTestStatus = "";
+	// 设置页里正在改的主动陪玩 token 上限（数字输入框的文字）
+	private string _aiCapText;
 	private bool _aiTesting;
 	private int _aiShownCount;
 
@@ -47,15 +49,82 @@ public partial class StoryReviewPanel
 		panel._aiTyping = true;
 	}
 
+	// 从画面上的小伙伴点过来时带着的那句话：先摆在对话末尾给玩家看，玩家真的追问了才记进这段对话；
+	// 没追问就换人、离开这一页，它不留下（主动陪玩说过的话不进对话记录）
+	private AiCompanion.Remark _aiCarry;
+	private string _aiCarryPersona = "";
+	private int _aiCarryFrame;
+
+	/// <summary>
+	/// 从画面上的小伙伴点过来：打开 AI 页、切到陪玩的这位。remark 是它刚说的那句话，先摆在对话末尾，
+	/// 玩家追问时才连同当时的事一起记进对话、告诉 AI；question 不空就直接发问。
+	/// </summary>
+	internal static void OpenAiFor(string personaId, AiCompanion.Remark remark, string question)
+	{
+		StoryReviewPanel panel = Instance;
+		if (panel == null)
+		{
+			return;
+		}
+		panel._visible = true;
+		panel._tab = AiTab;
+		panel._showChangelog = false;
+		panel._aiHistory = false;
+		panel._aiFocusInput = true;
+		panel._aiTyping = true;
+		if (AiChat.Busy)
+		{
+			return;
+		}
+		AiChat.PersonaId = personaId ?? AiPersona.AssistantId;
+		panel._aiCarry = remark != null && remark.Text.Length > 0 ? remark : null;
+		panel._aiCarryPersona = AiChat.PersonaId;
+		panel._aiCarryFrame = Time.frameCount;
+		panel._aiScroll.y = float.MaxValue;
+		if (!string.IsNullOrEmpty(question) && AiChat.Configured)
+		{
+			panel.AskAi(TextConverter.ForDisplay(question));
+		}
+	}
+
+	// 发问。从小伙伴那儿带过来的那句话这时才进对话：显示在问题前面，并连同当时的事告诉 AI
+	private void AskAi(string question)
+	{
+		if (AiChat.Busy)
+		{
+			return;
+		}
+		if (_aiCarry != null && _aiCarryPersona == AiChat.PersonaId && (question ?? "").Trim().Length > 0)
+		{
+			AiSession session = AiChat.Session;
+			session.Shown.Add(new AiChat.Entry { Kind = AiChat.Kind.Assistant, Text = _aiCarry.Text, Mood = _aiCarry.Mood });
+			string note = AiCompanionPrompts.FollowUp(_aiCarry.Text, _aiCarry.Card);
+			session.Note = session.Note.Length > 0 ? session.Note + "；" + note : note;
+		}
+		_aiCarry = null;
+		AiChat.Ask(question);
+	}
+
 	private void DrawAi(Rect r)
 	{
+		// 带过来的那句话只在这次打开时摆着：离开过这一页、换了人就不再摆
+		if (_aiCarry != null && ((Time.frameCount - _aiSeenFrame > 2 && Time.frameCount - _aiCarryFrame > 2) || _aiCarryPersona != AiChat.PersonaId))
+		{
+			_aiCarry = null;
+		}
 		_aiSeenFrame = Time.frameCount;
 		// AI 查资料要用整理好的剧情数据：打开这一页就开始整理（和路线图一样）
 		if (!StoryAtlas.Ready && !StoryAtlas.Building && UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "Title")
 		{
 			StoryAtlas.Start();
 		}
-		if (_aiSetup || !AiChat.Configured)
+		// 还没配好服务商就先进设置页，并留在那儿，等玩家自己点「开始提问」或「返回」
+		// （以前只看配没配好：Key 刚填上第一个字就算配好了，设置页当场换成对话页）
+		if (!AiChat.Configured)
+		{
+			_aiSetup = true;
+		}
+		if (_aiSetup)
 		{
 			DrawAiSetup(r);
 		}
@@ -65,65 +134,208 @@ public partial class StoryReviewPanel
 		}
 	}
 
+	// 点了哪家服务商：等下一次排版再换。换了以后「API Key」那一行可能多出来或消失，
+	// 同一次事件里中途换，排版时和处理点击时的控件数对不上
+	private int _aiPickedProvider = -1;
+
+	/// <summary>
+	/// AI 设置。左边一列选服务商，中间填连接要用的（Key、地址、模型）并测试连接，右边是主动陪玩和调试记录；
+	/// 窗口窄、右边放不下时，右边那栏接在中间那栏下面。
+	/// </summary>
 	private void DrawAiSetup(Rect r)
 	{
-		GUILayout.BeginArea(r);
-		_aiSetupScroll = GUILayout.BeginScrollView(_aiSetupScroll);
-		GUILayout.Label("AI 攻略设置", _heading);
-		GUILayout.Label("需要自己的 API Key。Key 只存在这台电脑的配置文件里，只发给下面选的服务商；导出诊断时会隐藏。每次提问，问题和 AI 查到的游戏剧情会发给服务商，按服务商的价格计费。", _muted);
-		GUILayout.Space(S(8));
-
-		GUILayout.Label("服务商", _label);
-		int current = ConfigManager.AiProvider.Value;
-		string[] names = LlmProvider.All.Select(p => p.Name).ToArray();
-		int picked = Pick(names, current, 3, r.width - S(30));
-		if (picked != current)
+		AiStyles();
+		if (_aiPickedProvider >= 0 && Event.current.type == EventType.Layout)
 		{
-			LlmProvider p = LlmProvider.At(picked);
-			ConfigManager.AiProvider.Value = picked;
-			ConfigManager.AiBaseUrl.Value = p.BaseUrl;
-			ConfigManager.AiModel.Value = p.Model;
-			ConfigManager.AiDeepModel.Value = p.DeepModel;
+			// 每家各记各的 Key、改过的地址和模型名：换过去是那家上次填的，没填过就是默认值、Key 空着
+			AiProviderStore.Switch(_aiPickedProvider);
 			_aiTestStatus = "";
+			_aiPickedProvider = -1;
+			// 输入框的控件编号可能跟着变了，别让焦点落到另一个框里
+			GUIUtility.keyboardControl = 0;
 		}
-		LlmProvider provider = AiChat.Provider;
-		GUILayout.Space(S(8));
+		// 顶上固定一行：左上角「返回」（和别的子页一样）、标题。还没配好服务商时没有对话页可回，按钮点不了；
+		// 按钮一直在：按条件显示的话，填 Key 填到一半它冒出来，后面输入框的控件编号跟着变，焦点会跳走
+		GUI.enabled = AiChat.Configured;
+		if (GUI.Button(new Rect(r.x, r.y, S(110), S(36)), "返回", _button))
+		{
+			_aiSetup = false;
+		}
+		GUI.enabled = true;
+		GUI.Label(new Rect(r.x + S(126), r.y, r.width - S(126), S(36)), "AI 设置", Middle(_heading));
+		GUILayout.BeginArea(new Rect(r.x, r.y + S(46), r.width, r.height - S(46)));
+		_aiSetupScroll = GUILayout.BeginScrollView(_aiSetupScroll);
+		GUILayout.Label("需要自己的 API Key。Key 只存在这台电脑的配置文件里，只发给下面选的服务商；导出诊断时会隐藏。每次提问，问题和 AI 查到的游戏剧情会发给服务商，按服务商的价格计费。", _muted);
+		GUILayout.Space(S(10));
+
+		// 服务商那一列按最长的名字定宽（译文长短不一）；剩下的宽度够就分两栏
+		float gap = S(20), listWidth = S(240);
+		foreach (LlmProvider p in LlmProvider.All)
+		{
+			listWidth = Mathf.Max(listWidth, TextWidth(p.Name, _aiListOff, 0f));
+		}
+		listWidth = Mathf.Min(listWidth, S(340));
+		float rest = r.width - S(30) - listWidth - gap;
+		bool wide = rest >= S(1150);
+		float mainWidth = wide ? Mathf.Min(S(820), rest * 0.58f) : Mathf.Min(S(900), rest);
+		float sideWidth = wide ? Mathf.Min(S(620), rest - mainWidth - gap) : mainWidth;
 
 		GUILayout.BeginHorizontal();
-		GUILayout.Label("API 地址", _label, GUILayout.Width(S(120)), Ctl());
-		Assign(ConfigManager.AiBaseUrl, GUILayout.TextField(ConfigManager.AiBaseUrl.Value, 200, _field, Ctl()));
+		GUILayout.BeginVertical(GUILayout.Width(listWidth));
+		GUILayout.Label("服务商", _heading);
+		int current = ConfigManager.AiProvider.Value;
+		for (int i = 0; i < LlmProvider.All.Length; i++)
+		{
+			if (GUILayout.Button(LlmProvider.All[i].Name, i == current ? _aiListOn : _aiListOff, GUILayout.Width(listWidth), Ctl()) && i != current)
+			{
+				_aiPickedProvider = i;
+			}
+		}
+		GUILayout.EndVertical();
+		GUILayout.Space(gap);
+		GUILayout.BeginVertical(GUILayout.Width(mainWidth));
+		DrawAiConnection(mainWidth);
+		if (!wide)
+		{
+			GUILayout.Space(S(8));
+			DrawAiExtras(sideWidth);
+		}
+		GUILayout.EndVertical();
+		if (wide)
+		{
+			GUILayout.Space(gap);
+			GUILayout.BeginVertical(GUILayout.Width(sideWidth));
+			DrawAiExtras(sideWidth);
+			GUILayout.EndVertical();
+		}
+		GUILayout.FlexibleSpace();
 		GUILayout.EndHorizontal();
-		GUILayout.BeginHorizontal();
-		GUILayout.Label("模型", _label, GUILayout.Width(S(120)), Ctl());
-		Assign(ConfigManager.AiModel, GUILayout.TextField(ConfigManager.AiModel.Value, 100, _field, Ctl()));
-		GUILayout.EndHorizontal();
+		GUILayout.EndScrollView();
+		GUILayout.EndArea();
+	}
+
+	// 中间一栏：连上服务商要填的几项，填完就地测试、开始提问
+	private void DrawAiConnection(float width)
+	{
+		LlmProvider provider = AiChat.Provider;
+		GUILayout.Label("连接", _heading);
+		GUILayout.BeginVertical(_card, GUILayout.Width(width));
+		float name = AiNameWidth("API Key", "API 地址", "问答模型", "深度模式模型");
+		// 选好服务商后多数人只用填 Key，放最上面；地址和模型名已经填好
 		if (!provider.NoKey)
 		{
 			GUILayout.BeginHorizontal();
-			GUILayout.Label("API Key", _label, GUILayout.Width(S(120)), Ctl());
+			AiName("API Key", name);
 			Assign(ConfigManager.AiApiKey, GUILayout.PasswordField(ConfigManager.AiApiKey.Value, '•', 300, _field, Ctl()));
 			if (provider.KeysPage.Length > 0 && GUILayout.Button("去申请 Key", _button, GUILayout.Width(TextWidth("去申请 Key", _button, S(120))), Ctl()))
 			{
 				Application.OpenURL(provider.KeysPage);
 			}
 			GUILayout.EndHorizontal();
+			GUILayout.Space(S(4));
 		}
 		GUILayout.BeginHorizontal();
-		GUILayout.Label("深度模式模型", _label, GUILayout.Width(S(160)), Ctl());
-		Assign(ConfigManager.AiDeepModel, GUILayout.TextField(ConfigManager.AiDeepModel.Value, 100, _field, Ctl()));
+		AiName("API 地址", name);
+		Assign(ConfigManager.AiBaseUrl, GUILayout.TextField(ConfigManager.AiBaseUrl.Value, 200, _field, Ctl()));
 		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
+		GUILayout.BeginHorizontal();
+		AiName("问答模型", name);
+		Assign(ConfigManager.AiModel, GUILayout.TextField(ConfigManager.AiModel.Value, 100, _field, Ctl()));
+		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
+		GUILayout.BeginHorizontal();
+		AiName("深度模式模型", name);
+		Assign(ConfigManager.AiDeepModel, AiHinted(GUILayout.TextField(ConfigManager.AiDeepModel.Value, 100, _field, Ctl()), "与问答模型相同"));
+		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
 		GUILayout.Label("模型名是建议值，服务商出了新模型可以自己改。要选支持工具调用（function calling）的模型。", _muted);
-		GUILayout.Space(S(8));
+		GUILayout.Space(S(10));
 
-		GUILayout.Label("回答方式、剧透程度、女主角的攻略提示在对话页上方直接选。", _muted);
-		GUILayout.Space(S(8));
-		GUILayout.Label("调试记录", _label);
-		int debug = Pick(new[] { "不记", "记下发给 AI 的内容" }, ConfigManager.AiDebugLog.Value ? 1 : 0, 2, r.width - S(30));
-		ConfigManager.AiDebugLog.Value = debug == 1;
-		if (ConfigManager.AiDebugLog.Value)
+		GUILayout.BeginHorizontal();
+		GUI.enabled = !_aiTesting && AiChat.Configured;
+		if (GUILayout.Button(_aiTesting ? "正在测试…" : "测试连接", _button, GUILayout.Width(TextWidth("测试连接", _button, S(160))), Ctl()))
 		{
-			GUILayout.Label("写在 Mod 文件夹的 logs/ai_debug.txt，不含 API Key。", _muted);
+			_aiTesting = true;
+			_aiTestStatus = "";
+			StartCoroutine(AiChat.Test(error =>
+			{
+				_aiTesting = false;
+				_aiTestStatus = error.Length == 0 ? "<color=#2F6B3A>连上了</color>" : "<color=#A3302A>" + error + "</color>";
+			}));
 		}
+		if (GUILayout.Button("开始提问", _primary, GUILayout.Width(TextWidth("开始提问", _primary, S(160))), Ctl()))
+		{
+			_aiSetup = false;
+		}
+		GUI.enabled = true;
+		GUILayout.FlexibleSpace();
+		GUILayout.EndHorizontal();
+		// 测试结果单独一行，报错长了能折行；没有结果时这一行不占高度（控件一直在，免得结果出来的那一次事件里控件数变了）
+		GUILayout.Label(_aiTestStatus, _rich, _aiTestStatus.Length > 0 ? GUILayout.ExpandHeight(false) : GUILayout.Height(0f));
+		GUILayout.EndVertical();
+		GUILayout.Space(S(4));
+		GUILayout.Label("回答方式、剧透程度、女主角的攻略提示在对话页上方直接选。", _muted);
+	}
+
+	// 右边一栏（窄窗口时接在连接下面）：主动陪玩用的模型和用量上限、调试记录
+	private void DrawAiExtras(float width)
+	{
+		GUILayout.Label("主动陪玩", _heading);
+		GUILayout.BeginVertical(_card, GUILayout.Width(width));
+		float name = AiNameWidth("模型", "token 上限");
+		GUILayout.BeginHorizontal();
+		AiName("模型", name);
+		Assign(ConfigManager.AiCompanionModel, AiHinted(GUILayout.TextField(ConfigManager.AiCompanionModel.Value, 100, _field, Ctl()), "与问答模型相同"));
+		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
+		GUILayout.BeginHorizontal();
+		AiName("token 上限", name);
+		_aiCapText ??= ConfigManager.AiCompanionTokenCap.Value.ToString();
+		string capText = GUILayout.TextField(_aiCapText, 9, _field, GUILayout.Width(S(160)), Ctl());
+		if (capText != _aiCapText)
+		{
+			_aiCapText = Regex.Replace(capText, @"\D", "");
+			ConfigManager.AiCompanionTokenCap.Value = int.TryParse(_aiCapText, out int capValue) ? capValue : 0;
+		}
+		GUILayout.FlexibleSpace();
+		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
+		GUILayout.Label("上限按每次启动游戏计算，达到后本次游戏不再发言；填 0 为不限。", _muted);
+		GUILayout.Label("开关、发言频率和陪玩人选在对话页上方直接选。", _muted);
+		GUILayout.EndVertical();
+
+		GUILayout.Space(S(8));
+		GUILayout.Label("自定义人设", _heading);
+		GUILayout.BeginVertical(_card, GUILayout.Width(width));
+		GUILayout.Label("可添加自行编写的人设和图片，也可替换内置人设的图片和人设文字。放置方法见文件夹内的说明文件。", _muted);
+		GUILayout.Space(S(4));
+		GUILayout.BeginHorizontal();
+		if (GUILayout.Button("打开文件夹", _button, GUILayout.Width(TextWidth("打开文件夹", _button, S(160))), Ctl()))
+		{
+			OpenAiPersonaFolder();
+		}
+		GUILayout.FlexibleSpace();
+		GUILayout.EndHorizontal();
+		GUILayout.EndVertical();
+
+		GUILayout.Space(S(8));
+		GUILayout.Label("调试记录", _heading);
+		GUILayout.BeginVertical(_card, GUILayout.Width(width));
+		bool log = ConfigManager.AiDebugLog.Value;
+		GUILayout.BeginHorizontal();
+		if (GUILayout.Button("不记", log ? _button : _primary, GUILayout.Width(TextWidth("不记", _button, S(110))), Ctl()) && log)
+		{
+			ConfigManager.AiDebugLog.Value = false;
+		}
+		if (GUILayout.Button("记下发给 AI 的内容", log ? _primary : _button, GUILayout.Width(TextWidth("记下发给 AI 的内容", _button, S(110))), Ctl()) && !log)
+		{
+			ConfigManager.AiDebugLog.Value = true;
+		}
+		GUILayout.FlexibleSpace();
+		GUILayout.EndHorizontal();
+		GUILayout.Space(S(4));
+		GUILayout.Label("写在 Mod 文件夹的 logs/ai_debug.txt，不含 API Key。", _muted);
 		// 测试题：开发用，发布包里没有题目文件，玩家看不到；手动放了 config\LOMAssistant_AI\eval.json 才显示。很费 token，点两下才跑
 		int evalCount = Time.frameCount % 60 == 0 || _aiEvalCount < 0 ? (_aiEvalCount = AiEval.Count) : _aiEvalCount;
 		if (evalCount > 0)
@@ -144,74 +356,46 @@ public partial class StoryReviewPanel
 					_aiEvalAsked = Time.realtimeSinceStartup;
 				}
 			}
-			GUI.enabled = true;
-			if (AiEval.HasReport && !AiEval.Running && GUILayout.Button("打开结果", _button, GUILayout.Width(S(140)), Ctl()))
+			// 「打开结果」一直占着位置，没有结果时点不了
+			GUI.enabled = AiEval.HasReport && !AiEval.Running;
+			if (GUILayout.Button("打开结果", _button, GUILayout.Width(S(140)), Ctl()))
 			{
 				Application.OpenURL("file:///" + AiEval.ReportPath.Replace('\\', '/'));
 			}
-			GUILayout.Label(asked ? "每题都要查资料，一次会用掉几十万 token" : AiEval.Status, Middle(_muted), Ctl());
+			GUI.enabled = true;
+			GUILayout.FlexibleSpace();
 			GUILayout.EndHorizontal();
+			GUILayout.Label(asked ? "每题都要查资料，一次会用掉几十万 token" : AiEval.Status ?? "", _muted);
 		}
-		GUILayout.Space(S(12));
-
-		GUILayout.BeginHorizontal();
-		GUI.enabled = !_aiTesting && AiChat.Configured;
-		if (GUILayout.Button(_aiTesting ? "正在测试…" : "测试连接", _button, GUILayout.Width(S(160)), Ctl()))
-		{
-			_aiTesting = true;
-			_aiTestStatus = "";
-			StartCoroutine(AiChat.Test(error =>
-			{
-				_aiTesting = false;
-				_aiTestStatus = error.Length == 0 ? "<color=#2F6B3A>连上了</color>" : "<color=#A3302A>" + error + "</color>";
-			}));
-		}
-		if (GUILayout.Button("开始提问", _primary, GUILayout.Width(S(160)), Ctl()))
-		{
-			_aiSetup = false;
-		}
-		GUI.enabled = true;
-		GUILayout.Label(_aiTestStatus, MiddleRich(), Ctl());
-		GUILayout.EndHorizontal();
-		GUILayout.EndScrollView();
-		GUILayout.EndArea();
+		GUILayout.EndVertical();
 	}
 
-	// 一组互斥的按钮，选中的用朱砂底（GUILayout 的 SelectionGrid、Toolbar 用普通按钮样式时看不出选的是哪个）
-	private int Pick(string[] labels, int current, int columns, float width)
+	// 一张卡片里各行的名字一样宽（按最长的那个量，译文长短不一），后面的输入框才对得齐
+	private float AiNameWidth(params string[] names)
 	{
-		int picked = current;
-		for (int i = 0; i < labels.Length; i++)
+		GUIStyle line = Middle(_label);
+		float width = S(96);
+		foreach (string name in names)
 		{
-			if (i % columns == 0)
-			{
-				GUILayout.BeginHorizontal();
-			}
-			// 每格一样宽（GUILayout 默认按字数撑开，长短不一）
-			if (GUILayout.Button(labels[i], i == current ? _primary : _button, Ctl(), GUILayout.Width((width - S(6) * (columns - 1)) / columns)))
-			{
-				picked = i;
-			}
-			if (i % columns == columns - 1 || i == labels.Length - 1)
-			{
-				GUILayout.EndHorizontal();
-			}
+			width = Mathf.Max(width, TextWidth(name, line, 0f) + S(6));
 		}
-		return picked;
+		return width;
 	}
 
-	private GUIStyle _middleRich;
-	private float _middleRichScale;
-
-	// 竖直居中、能显示颜色的单行字（Middle 出来的样式关了富文本）
-	private GUIStyle MiddleRich()
+	private void AiName(string text, float width)
 	{
-		if (_middleRich == null || _middleRichScale != _scale)
+		GUILayout.Label(text, Middle(_label), GUILayout.Width(width), Ctl());
+	}
+
+	// 输入框空着时，在框里用淡墨字写上留空按什么算（接在刚画的输入框后面调用）
+	private string AiHinted(string typed, string hint)
+	{
+		if (typed.Length == 0 && Event.current.type == EventType.Repaint)
 		{
-			_middleRich = new GUIStyle(Middle(_rich)) { richText = true };
-			_middleRichScale = _scale;
+			Rect box = GUILayoutUtility.GetLastRect();
+			GUI.Label(new Rect(box.x + _field.padding.left + 1f, box.y, box.width - _field.padding.horizontal, box.height), hint, Middle(_muted));
 		}
-		return _middleRich;
+		return typed;
 	}
 
 	private static void Assign(ConfigElement<string> element, string value)
@@ -222,25 +406,50 @@ public partial class StoryReviewPanel
 		}
 	}
 
-	// 能选的人设：攻略助手 + 玩家见过的女主角（读过她的对白）；每 5 秒重算一次
-	private List<AiPersona> _aiPersonas = new List<AiPersona>();
+	// 能选的人设：攻略助手 + 玩家见过的女主角（读过她的对白）+ 玩家自建的人设；每隔几秒重算一次
+	private List<AiPersona> _aiPersonas = new List<AiPersona>(), _aiMet = new List<AiPersona>();
 	private float _aiPersonasAt = -100f;
 
 	private List<AiPersona> MetPersonas()
 	{
-		if (Time.realtimeSinceStartup - _aiPersonasAt > 5f && StoryAtlas.Ready)
+		// 剧情数据还没整理好时见没见过算不出来：先只有自建的，一秒看一次
+		if (Time.realtimeSinceStartup - _aiPersonasAt > (StoryAtlas.Ready ? 5f : 1f))
 		{
 			_aiPersonasAt = Time.realtimeSinceStartup;
-			_aiPersonas = AiPersona.All.Where(p => p.Met()).ToList();
+			if (StoryAtlas.Ready)
+			{
+				_aiMet = AiPersona.All.Where(p => p.Met()).ToList();
+			}
+			_aiPersonas = _aiMet.Concat(AiCustom.Personas).ToList();
 		}
 		return _aiPersonas;
+	}
+
+	// 自定义人设的文件夹：建好、写上说明，再打开
+	private void OpenAiPersonaFolder()
+	{
+		try
+		{
+			var shown = MetPersonas().ToList();
+			if (AiCompanion.Persona != null)
+			{
+				shown.Add(AiCompanion.Persona);
+			}
+			string dir = AiCustom.Prepare(shown);
+			System.Diagnostics.Process.Start("explorer.exe", "\"" + dir + "\"");
+		}
+		catch (System.Exception ex)
+		{
+			FileLogger.LogWarning("[AI] 打开自定义人设文件夹失败: " + ex.Message);
+			Notice("打不开这个文件夹", true);
+		}
 	}
 
 	// 立绘：Addressables 里 Images/Characters/文件夹/表情.png；没有这个表情就用默认的
 	private static readonly Dictionary<string, UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<Sprite>> AiPortraits =
 		new Dictionary<string, UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<Sprite>>();
 
-	private static Sprite AiPortrait(AiPersona p, string mood)
+	internal static Sprite AiPortrait(AiPersona p, string mood)
 	{
 		foreach (string m in new[] { mood, p.Moods[0] })
 		{
@@ -277,7 +486,7 @@ public partial class StoryReviewPanel
 	// 在游戏实际载入的图上量（同一个人在解包资源里可能有好几套画布），量一次记住
 	private static readonly Dictionary<Sprite, Vector2> HeadAnchors = new Dictionary<Sprite, Vector2>();
 
-	private static Vector2 HeadAnchor(Sprite sprite, string name)
+	internal static Vector2 HeadAnchor(Sprite sprite, string name)
 	{
 		if (HeadAnchors.TryGetValue(sprite, out Vector2 cached))
 		{
@@ -350,6 +559,27 @@ public partial class StoryReviewPanel
 	// 立绘：所有人按同一个像素比例画（游戏里的立绘都是同一个比例，只是画布留白不同），头顶对齐这一栏顶端、头居中。头约 280 像素宽，画成栏宽的一半
 	private void DrawAiPortrait(Rect r, AiPersona p)
 	{
+		// 玩家自己放了图（给内置人设换图，或自建人设）：整张放进这一栏，靠上居中，不裁；小图最多放大到两倍
+		Texture2D own = AiCustom.Image(p, AiChat.Mood, false);
+		if (own != null)
+		{
+			if (Event.current.type == EventType.Repaint)
+			{
+				float fit = Mathf.Min(2f, Mathf.Min(r.width / own.width, (r.height - S(10)) / own.height));
+				float w = Mathf.Round(own.width * fit), h = Mathf.Round(own.height * fit);
+				GUI.DrawTexture(new Rect(Mathf.Round(r.x + (r.width - w) / 2f), Mathf.Round(r.y + S(10)), w, h), own);
+			}
+			return;
+		}
+		if (p.Custom)
+		{
+			// 没放图的自建人设：一方朱砂印，写名字的第一个字
+			if (Event.current.type == EventType.Repaint)
+			{
+				GUI.Label(new Rect(Mathf.Round(r.x + (r.width - S(160)) / 2f), Mathf.Round(r.y + S(40)), S(160), S(160)), TextConverter.Verbatim + p.Initial, _aiBigSeal);
+			}
+			return;
+		}
 		Sprite sprite = AiPortrait(p, AiChat.Mood);
 		if (sprite == null || Event.current.type != EventType.Repaint)
 		{
@@ -387,6 +617,8 @@ public partial class StoryReviewPanel
 	{
 		"这里应该怎么选？", "怎样才能和你走得更近？", "你最近在忙些什么？", "接下来有什么事件能增加你的好感？", "你觉得我这个人怎么样？",
 	};
+	// 自建人设没有好感、结缘可问
+	private static readonly string[] CustomStarters = { "这里应该怎么选？", "你最近在忙些什么？", "你觉得我这个人怎么样？" };
 	private float _aiRefocusLogged = -100f;
 	// 自己画的光标：闪烁从光标最后一次移动算起，打字、移动时一直亮着
 	private int _aiCaretIndex = -1;
@@ -459,7 +691,7 @@ public partial class StoryReviewPanel
 				if (Steamworks.SteamUtils.GetEnteredGamepadTextInput(out string text, length + 1) && Instance != null)
 				{
 					Instance._aiInput = "";
-					AiChat.Ask(text);
+					Instance.AskAi(text);
 				}
 			});
 			return Steamworks.SteamUtils.ShowGamepadTextInput(Steamworks.EGamepadTextInputMode.k_EGamepadTextInputModeNormal,
@@ -494,6 +726,72 @@ public partial class StoryReviewPanel
 		return picked;
 	}
 
+	// 主动陪玩那一排：关、安静、正常、话多；陪玩的是谁（和上面聊天选的人设分开，点按钮换成当前这位）；用了多少 token
+	private void DrawAiCompanionStrip(Rect r, AiPersona current)
+	{
+		float x = r.x;
+		bool supported = AiCompanion.Supported;
+		GUI.enabled = supported;
+		int level = supported && ConfigManager.AiCompanion.Value ? AiCompanion.Level + 1 : 0;
+		int picked = ChoiceStrip(ref x, r.y, r.height, "主动陪玩", new[] { "关", "安静", "正常", "话多" }, level, new[]
+		{
+			"不在游戏画面上显示",
+			"选定的人设常驻游戏画面，仅在结局、战斗胜负、自身好感变化、限时剧情将到期时发言",
+			"另在做出有后果的选择、掷骰、剧情段落结束时发言",
+			"另在普通选择、数值变化时发言，token 用量约为「正常」的两倍",
+		});
+		GUI.enabled = true;
+		x += S(24);
+		if (!supported)
+		{
+			GUI.Label(new Rect(x, r.y, r.xMax - x, r.height), "需要游戏 1.0.6001 及以上版本", Middle(_muted));
+			return;
+		}
+		if (picked != level)
+		{
+			if (picked == 0)
+			{
+				ConfigManager.AiCompanion.Value = false;
+			}
+			else
+			{
+				ConfigManager.AiCompanionLevel.Value = picked - 1;
+				if (!ConfigManager.AiCompanion.Value)
+				{
+					ConfigManager.AiCompanion.Value = true;
+					// 这句话写在这一排后面：窗口顶上那条提示夹在页签和版本号之间，放不下这么长
+					_aiCompanionNoticeUntil = Time.realtimeSinceStartup + 10f;
+				}
+			}
+		}
+		AiPersona who = AiCompanion.Persona;
+		string label = string.Format("陪玩人选：{0}", TextConverter.ForDisplay(who != null ? who.Name : "攻略助手"));
+		float lw = TextWidth(label, Middle(_muted), 0f);
+		GUI.Label(new Rect(x, r.y, lw, r.height), label, Middle(_muted));
+		x += lw + S(4);
+		if ((current?.Id ?? "") != (who?.Id ?? ""))
+		{
+			var swap = new Rect(x, r.y, TextWidth("换成当前人设", _aiSmallButton, S(64)), r.height);
+			if (GUI.Button(swap, "换成当前人设", _aiSmallButton))
+			{
+				ConfigManager.AiCompanionPersona.Value = current?.Id ?? "";
+			}
+			Hover(swap, "由上方选中的人设陪玩");
+			x = swap.xMax + S(12);
+		}
+		if (ConfigManager.AiCompanion.Value && Time.realtimeSinceStartup < _aiCompanionNoticeUntil)
+		{
+			GUI.Label(new Rect(x, r.y, r.xMax - x, r.height), "主动陪玩已开启：每次发言会将最近的对白和事件发送给服务商", Middle(_small));
+		}
+		else if (AiCompanion.TokensUsed > 0)
+		{
+			GUI.Label(new Rect(x, r.y, r.xMax - x, r.height), string.Format(AiCompanion.Capped ? "陪玩已用 {0} token（已达上限）" : "陪玩已用 {0} token", AiCompanion.TokensUsed), Middle(_muted));
+		}
+	}
+
+	// 刚开启主动陪玩：这一排后面写一阵「会把对白发给服务商」
+	private float _aiCompanionNoticeUntil = -100f;
+
 	private void DrawAiHistory(Rect r)
 	{
 		List<AiSession> sessions = AiSessions.Of(AiChat.PersonaId);
@@ -519,7 +817,7 @@ public partial class StoryReviewPanel
 	}
 
 	// AI 页自己的样式：气泡、名牌、折叠的查资料行。跟着窗口缩放、深浅色重建
-	private GUIStyle _aiUser, _aiBot, _aiCard, _aiName, _aiFold, _aiSmallButton, _aiPlate, _aiTabText, _aiTabTextOn, _aiField, _aiHint, _aiHintBox, _aiHintTitle, _aiHintText;
+	private GUIStyle _aiUser, _aiBot, _aiCard, _aiName, _aiFold, _aiSmallButton, _aiPlate, _aiTabText, _aiTabTextOn, _aiField, _aiHint, _aiHintBox, _aiHintTitle, _aiHintText, _aiListOff, _aiListOn, _aiBigSeal;
 	private float _aiStyleScale = -1f;
 	private bool _aiStyleDark;
 	private float _aiStyleOpacity = -1f;
@@ -560,6 +858,11 @@ public partial class StoryReviewPanel
 		_aiFold.hover.textColor = Ink;
 		_aiFold.margin = new RectOffset((int)S(6), 0, (int)S(2), (int)S(2));
 		_aiSmallButton = new GUIStyle(_button) { fontSize = Mathf.RoundToInt(15 * _scale) };
+		// 设置页左边的服务商列表：一行一家，名字靠左对齐（长短不一，居中的话参差不齐）
+		_aiListOff = new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft };
+		_aiListOff.padding = new RectOffset((int)S(14), (int)S(10), (int)S(4), (int)S(4));
+		_aiListOn = new GUIStyle(_primary) { alignment = TextAnchor.MiddleLeft };
+		_aiListOn.padding = new RectOffset((int)S(14), (int)S(10), (int)S(4), (int)S(4));
 		// 人设按钮上的名字：只有字，不带按钮底（底由按钮自己画，名字压在头像右边）
 		_aiTabText = new GUIStyle(_rich) { wordWrap = false, alignment = TextAnchor.MiddleLeft, fontSize = _button.fontSize };
 		_aiTabText.normal.textColor = Ink;
@@ -574,6 +877,8 @@ public partial class StoryReviewPanel
 		_aiPlate = new GUIStyle(_seal) { fontSize = Mathf.RoundToInt(20 * _scale) };
 		_aiPlate.normal.background = Framed(Cinnabar, new Color(Cinnabar.r * 0.7f, Cinnabar.g * 0.7f, Cinnabar.b * 0.7f, 1f));
 		_aiPlate.border = new RectOffset(2, 2, 2, 2);
+		// 没放图的自建人设：左栏一方大朱砂印，写名字的第一个字
+		_aiBigSeal = new GUIStyle(_aiPlate) { fontSize = Mathf.RoundToInt(84 * _scale), clipping = TextClipping.Clip };
 	}
 
 	// 气泡宽度跟着字走：最长一行有多宽就多宽，超过上限才折行
@@ -589,7 +894,7 @@ public partial class StoryReviewPanel
 	private static readonly Dictionary<(int, int, bool, char), float> _charWidth = new Dictionary<(int, int, bool, char), float>();
 	private static readonly GUIStyle _measure = new GUIStyle { wordWrap = false, richText = true };
 
-	private static string Wrap(string rich, GUIStyle style, float width)
+	internal static string Wrap(string rich, GUIStyle style, float width)
 	{
 		if (width <= 0f || string.IsNullOrEmpty(rich))
 		{
@@ -773,6 +1078,22 @@ public partial class StoryReviewPanel
 	// 展开了的「查了 N 处资料」（按那一组的第一条记）
 	private readonly HashSet<AiChat.Entry> _aiOpenLookups = new HashSet<AiChat.Entry>();
 
+	/// <summary>
+	/// 一条（或连着的一组查资料）消息排好的样子：折好行的文字、气泡宽度、上次画出来的高度。
+	/// 消息多了以后每次刷新都重新折行、量宽度会越来越卡，所以按消息记住；看不见的消息只按记下的高度留空。
+	/// </summary>
+	private sealed class AiRow
+	{
+		public string Key; // 宽度、字号、展开状态等，变了就重排
+		public string Said, Reply, Hint;
+		public float SaidWidth, ReplyWidth, HintWidth;
+		public float Height = -1f;
+	}
+
+	private readonly Dictionary<AiChat.Entry, AiRow> _aiRows = new Dictionary<AiChat.Entry, AiRow>();
+	private GUIStyle _aiRowStyle;
+	private readonly List<(AiRow Row, string Key, float Height)> _aiMeasured = new List<(AiRow, string, float)>();
+
 	private void DrawAiChat(Rect r)
 	{
 		AiStyles();
@@ -817,6 +1138,25 @@ public partial class StoryReviewPanel
 					}
 					GUI.Label(icon, "攻", _seal);
 				}
+				else if (personas[i - 1].Custom)
+				{
+					// 自建人设：头像那张图上裁一块；没放图就和攻略助手一样画朱砂印，写名字的第一个字
+					if (AiCustom.Icon(personas[i - 1], out Texture own, out Rect ownUv))
+					{
+						if (Event.current.type == EventType.Repaint)
+						{
+							GUI.DrawTextureWithTexCoords(icon, own, ownUv);
+						}
+					}
+					else
+					{
+						if (Event.current.type == EventType.Repaint)
+						{
+							Fill(icon, i == current ? new Color(1f, 1f, 1f, 0.25f) : Cinnabar);
+						}
+						GUI.Label(icon, TextConverter.Verbatim + personas[i - 1].Initial, _seal);
+					}
+				}
 				else if (personas[i - 1].IconCrop != null)
 				{
 					// 大师兄没有游戏里的心上人头像：从立绘上裁出脸
@@ -834,6 +1174,11 @@ public partial class StoryReviewPanel
 
 		// 左栏：女主角立绘和名牌；攻略助手时是一张用法说明
 		AiPersona persona = AiPersona.Find(AiChat.PersonaId);
+		// 选着的自建人设没了（文件夹删了、改名了）：回到攻略助手，免得名字对不上人
+		if (persona == null && AiChat.PersonaId.Length > 0 && !AiChat.Busy)
+		{
+			AiChat.PersonaId = AiPersona.AssistantId;
+		}
 		float pw = S(320);
 		var left = new Rect(r.x, r.y, pw, r.height);
 		if (persona != null)
@@ -940,6 +1285,9 @@ public partial class StoryReviewPanel
 			}) == 0;
 		}
 		r = new Rect(r.x, r.y + bh + S(8), r.width, r.height - bh - S(8));
+		// 第三行：主动陪玩（常驻游戏画面的小伙伴）。开关和话多程度并成一排，后面是陪玩的人选
+		DrawAiCompanionStrip(new Rect(r.x, r.y, r.width, bh), persona);
+		r = new Rect(r.x, r.y + bh + S(8), r.width, r.height - bh - S(8));
 		if (_aiHistory)
 		{
 			DrawAiHistory(r);
@@ -963,40 +1311,98 @@ public partial class StoryReviewPanel
 			GUILayout.Label(StoryAtlas.Status, _muted);
 		}
 		var shown = AiChat.Shown;
+		// 消息多的时候只画看得见的那些：先按记下的高度算出总高，滚到底（float.MaxValue）时换算成实际位置
+		string baseKey = (int)area.width + "|" + _aiBot.fontSize + "|" + TextConverter.DisplayLanguage + "|" + (persona != null ? persona.Name : "");
+		if (_aiRows.Count > shown.Count + 200)
+		{
+			var keep = new HashSet<AiChat.Entry>(shown);
+			foreach (AiChat.Entry gone in _aiRows.Keys.Where(k => !keep.Contains(k)).ToList())
+			{
+				_aiRows.Remove(gone);
+			}
+		}
+		float total = 0f;
+		foreach (AiRow known in shown.Select(e => _aiRows.TryGetValue(e, out AiRow row) ? row : null).Where(row => row != null && row.Height > 0f))
+		{
+			total += known.Height;
+		}
+		float top = Mathf.Min(_aiScroll.y, Mathf.Max(0f, total - area.height));
+		float y = 0f;
+		_aiMeasured.Clear();
 		for (int i = 0; i < shown.Count; i++)
 		{
 			AiChat.Entry entry = shown[i];
+			int end = i;
+			if (entry.Kind == AiChat.Kind.Activity)
+			{
+				while (end + 1 < shown.Count && shown[end + 1].Kind == AiChat.Kind.Activity)
+				{
+					end++;
+				}
+			}
+			bool busyTail = end == shown.Count - 1 && AiChat.Busy;
+			string key = baseKey + "|" + (end - i) + "|" + _aiOpenLookups.Contains(entry) + "|" + busyTail + "|" + entry.State;
+			if (!_aiRows.TryGetValue(entry, out AiRow cached))
+			{
+				_aiRows[entry] = cached = new AiRow();
+			}
+			if (cached.Key != key)
+			{
+				cached.Key = key;
+				cached.Height = -1f;
+				cached.Said = cached.Reply = cached.Hint = null;
+			}
+			// 记过高度、又离看得见的地方超过一屏的，只留空
+			if (cached.Height > 0f && (y + cached.Height < top - area.height || y > top + area.height * 2f))
+			{
+				GUILayout.Space(cached.Height);
+				y += cached.Height;
+				i = end;
+				continue;
+			}
+			// 不用 GUIStyle.none：那样里面第一条、最后一条的外边距会算到组外面，留空时高度对不上
+			_aiRowStyle ??= new GUIStyle();
+			GUILayout.BeginVertical(_aiRowStyle);
 			switch (entry.Kind)
 			{
 				case AiChat.Kind.User:
 					// 玩家的话靠右
+					if (cached.Said == null)
+					{
+						cached.Said = Wrap(TextConverter.Verbatim + Escape(entry.Text), _aiUser, bubbleMax - _aiUser.padding.horizontal);
+						cached.SaidWidth = BubbleWidth(cached.Said, _aiUser, bubbleMax);
+					}
 					GUILayout.BeginHorizontal();
 					GUILayout.FlexibleSpace();
-					string said = Wrap(TextConverter.Verbatim + Escape(entry.Text), _aiUser, bubbleMax - _aiUser.padding.horizontal);
-					GUILayout.Label(said, _aiUser, GUILayout.Width(BubbleWidth(said, _aiUser, bubbleMax)));
+					GUILayout.Label(cached.Said, _aiUser, GUILayout.Width(cached.SaidWidth));
 					GUILayout.EndHorizontal();
 					break;
 				case AiChat.Kind.Assistant:
 					GUILayout.Label(persona != null ? TextConverter.ForDisplay(persona.Name) : "攻略助手", _aiName);
 				{
 					// 女主角说的话放气泡；「【攻略提示】」往后是旁白写给玩家的，单独一个淡色框
-					int cut = persona != null ? entry.Text.IndexOf("【攻略提示】", System.StringComparison.Ordinal) : -1;
-					string words = cut >= 0 ? entry.Text.Substring(0, cut).Trim() : entry.Text;
-					string hint = cut >= 0 ? entry.Text.Substring(cut + "【攻略提示】".Length).Trim() : "";
-					if (words.Length > 0)
+					float hintWidth = area.width - S(30) - _aiHintBox.margin.left - _aiHintBox.padding.horizontal;
+					if (cached.Reply == null)
+					{
+						int cut = persona != null ? entry.Text.IndexOf("【攻略提示】", System.StringComparison.Ordinal) : -1;
+						string words = cut >= 0 ? entry.Text.Substring(0, cut).Trim() : entry.Text;
+						string hint = cut >= 0 ? entry.Text.Substring(cut + "【攻略提示】".Length).Trim() : "";
+						cached.Reply = words.Length > 0 ? Wrap(TextConverter.Verbatim + RichFromMarkdown(words), _aiBot, area.width - S(30) - _aiBot.padding.horizontal) : "";
+						cached.ReplyWidth = words.Length > 0 ? BubbleWidth(cached.Reply, _aiBot, area.width - S(30)) : 0f;
+						cached.Hint = hint.Length > 0 ? Wrap(TextConverter.Verbatim + RichFromMarkdown(hint), _aiHintText, hintWidth - _aiHintText.padding.horizontal) : "";
+					}
+					if (cached.Reply.Length > 0)
 					{
 						GUILayout.BeginHorizontal();
-						string reply = Wrap(TextConverter.Verbatim + RichFromMarkdown(words), _aiBot, area.width - S(30) - _aiBot.padding.horizontal);
-						GUILayout.Label(reply, _aiBot, GUILayout.Width(BubbleWidth(reply, _aiBot, area.width - S(30))));
+						GUILayout.Label(cached.Reply, _aiBot, GUILayout.Width(cached.ReplyWidth));
 						GUILayout.FlexibleSpace();
 						GUILayout.EndHorizontal();
 					}
-					if (hint.Length > 0)
+					if (cached.Hint.Length > 0)
 					{
 						GUILayout.BeginVertical(_aiHintBox, GUILayout.MaxWidth(area.width - S(30)));
 						GUILayout.Label("<b>攻略提示</b>", _aiHintTitle);
-						float hintWidth = area.width - S(30) - _aiHintBox.margin.left - _aiHintBox.padding.horizontal;
-						GUILayout.Label(Wrap(TextConverter.Verbatim + RichFromMarkdown(hint), _aiHintText, hintWidth - _aiHintText.padding.horizontal), _aiHintText, GUILayout.Width(hintWidth));
+						GUILayout.Label(cached.Hint, _aiHintText, GUILayout.Width(hintWidth));
 						GUILayout.EndVertical();
 					}
 					break;
@@ -1004,13 +1410,8 @@ public partial class StoryReviewPanel
 				case AiChat.Kind.Activity:
 				{
 					// 连着的查资料并成一行「查了 N 处资料」，点开看明细
-					int end = i;
-					while (end + 1 < shown.Count && shown[end + 1].Kind == AiChat.Kind.Activity)
-					{
-						end++;
-					}
 					bool open = _aiOpenLookups.Contains(entry);
-					bool last = end == shown.Count - 1 && AiChat.Busy;
+					bool last = busyTail;
 					if (!last && GUILayout.Button(string.Format(open ? "▾ 查了 {0} 处资料" : "▸ 查了 {0} 处资料", end - i + 1), _aiFold))
 					{
 						if (open)
@@ -1068,6 +1469,32 @@ public partial class StoryReviewPanel
 					GUILayout.Label("<color=#A3302A>" + Escape(entry.Text) + "</color>", _rich);
 					break;
 			}
+			GUILayout.EndVertical();
+			// 画完量一下高度；整轮画完再记，免得同一次刷新里前后两遍排得不一样
+			if (Event.current.type == EventType.Repaint)
+			{
+				_aiMeasured.Add((cached, key, GUILayoutUtility.GetLastRect().height));
+			}
+			y += cached.Height > 0f ? cached.Height : 0f;
+			i = end;
+		}
+		foreach (var (row, rowKey, height) in _aiMeasured)
+		{
+			if (row.Key == rowKey && height > 0f)
+			{
+				row.Height = height;
+			}
+		}
+		_aiMeasured.Clear();
+		// 从画面上的小伙伴点过来时带着的那句话：摆在末尾当话头，还不算这段对话里的
+		if (_aiCarry != null && !AiChat.Busy)
+		{
+			GUILayout.Label("刚才在游戏画面上说的", _muted);
+			string carried = Wrap(TextConverter.Verbatim + RichFromMarkdown(_aiCarry.Text), _aiBot, area.width - S(30) - _aiBot.padding.horizontal);
+			GUILayout.BeginHorizontal();
+			GUILayout.Label(carried, _aiBot, GUILayout.Width(BubbleWidth(carried, _aiBot, area.width - S(30))));
+			GUILayout.FlexibleSpace();
+			GUILayout.EndHorizontal();
 		}
 		if (AiChat.Busy && AiChat.Partial.Length > 0)
 		{
@@ -1095,13 +1522,13 @@ public partial class StoryReviewPanel
 		{
 			GUILayout.Space(S(12));
 			GUILayout.Label("可以这样问：", _muted);
-			foreach (string q in persona != null ? HeroineStarters : AssistantStarters)
+			foreach (string q in persona == null ? AssistantStarters : persona.Custom ? CustomStarters : HeroineStarters)
 			{
 				GUILayout.BeginHorizontal();
 				// 宽度按界面语言量：按中文原文量，英文、韩文会被截掉
 				if (GUILayout.Button(q, _button, GUILayout.Width(TextWidth(q, _button, 0f) + _button.padding.horizontal), Ctl()))
 				{
-					AiChat.Ask(TextConverter.ForDisplay(q));
+					AskAi(TextConverter.ForDisplay(q));
 				}
 				GUILayout.FlexibleSpace();
 				GUILayout.EndHorizontal();
@@ -1185,7 +1612,7 @@ public partial class StoryReviewPanel
 			if (question.Length > 0)
 			{
 				_aiInput = "";
-				AiChat.Ask(question);
+				AskAi(question);
 			}
 		}
 	}
@@ -1196,7 +1623,7 @@ public partial class StoryReviewPanel
 	private static readonly Regex Heading = new Regex(@"^#{1,6}\s*(.+)$", RegexOptions.Multiline);
 
 	// 模型常用 Markdown：粗体、标题换成富文本粗体，列表符号照留，其余尖括号换掉免得被当成标签
-	private static string RichFromMarkdown(string text)
+	internal static string RichFromMarkdown(string text)
 	{
 		string t = Escape(text).Replace("\r", "");
 		t = Heading.Replace(t, "<b>$1</b>");
@@ -1220,19 +1647,11 @@ public partial class StoryReviewPanel
 	{
 		try
 		{
-			var entries = Mortal.Core.StoryLogData.Entries;
-			for (int i = entries.Count - 1; i >= 0; i--)
+			// 旧版游戏没有这份回想，当旁白
+			string speaker = StoryLogCompat.LastSpeaker();
+			if (!string.IsNullOrEmpty(speaker))
 			{
-				Mortal.Core.StoryLogEntry e = entries[i];
-				if (e.Type != Mortal.Core.StoryLogType.Story)
-				{
-					continue;
-				}
-				if (string.IsNullOrEmpty(e.Speaker))
-				{
-					return "旁白";
-				}
-				string name = Mortal.Core.LocalizationManager.Instance.LocaleResolver.GetString("Character/" + e.Speaker);
+				string name = Mortal.Core.LocalizationManager.Instance.LocaleResolver.GetString("Character/" + speaker);
 				name = TextConverter.ToSimplified(RichText.Strip(name ?? "")).Trim();
 				return name.Length > 0 && !name.StartsWith("Character/") ? name : "旁白";
 			}

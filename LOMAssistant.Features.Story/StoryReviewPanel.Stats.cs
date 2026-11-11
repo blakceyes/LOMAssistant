@@ -80,7 +80,7 @@ public partial class StoryReviewPanel
 		{ GameStatType.防禦, "防御" },
 		{ GameStatType.攻擊爆擊, "攻击暴击" },
 		{ GameStatType.暗器爆擊, "暗器暴击" },
-		{ GameStatType.戰役預設血量, "团战预设血量" },
+		{ GameStatType.戰役預設血量, "战役预设血量" },
 		{ GameStatType.稱號, "称号" },
 		{ GameStatType.娘化, "娘化" },
 		{ GameStatType.全武學點數, "累计武学点" },
@@ -251,8 +251,14 @@ public partial class StoryReviewPanel
 		// 文字竖直居中、每个控件一样高（和设置页一样），一行里的字和框才对得齐
 		GUIStyle line = Middle(_label);
 		GUIStyle muted = Middle(_muted);
-		// 能锁的行在加减按钮前面多一个锁：附加值那一栏（如「(+5)」）让出位置，后面的按钮和别的行对齐
-		float nameWidth = S(120), extraWidth = row.LockStat != null ? S(80) - S(36) - _button.margin.left : S(80);
+		// 能锁的行在加减按钮前面多一个锁：附加值那一栏（如「(+5)」）让出位置，后面的按钮和别的行对齐；
+		// 一行还有富余时用上富余的宽度，好放下称号
+		float nameWidth = S(120), extraWidth = S(80);
+		if (row.LockStat != null)
+		{
+			float spare = width - S(10) - _card.padding.horizontal - nameWidth - S(52) - S(36) - S(58) * 2 - S(72) - S(50) - _button.margin.left * 8;
+			extraWidth = Mathf.Max(S(80) - S(36) - _button.margin.left, Mathf.Min(spare, S(120)));
+		}
 		string displayName = TextConverter.ForDisplay(row.Name);
 		string fittedName = Fit(displayName, line, nameWidth);
 		// 旗标、物品的名字能点，点了看它在哪些剧情里用到（标题后面有提示）
@@ -273,13 +279,14 @@ public partial class StoryReviewPanel
 		GUILayout.Label(row.NoValue ? "—" : row.Of > 0 ? value + "/" + row.Of : value.ToString(), line, GUILayout.Width(S(52)), Ctl());
 		string extra = row.Extra?.Invoke() ?? "";
 		// 后面的说明（旗标的中文说明）也能点
-		if (row.Uses != null ? GUILayout.Button(Fit(extra, muted, extraWidth), muted, GUILayout.Width(extraWidth), Ctl()) : DrawLabel(Fit(extra, muted, extraWidth), muted, extraWidth))
+		string fittedExtra = Fit(extra, muted, extraWidth);
+		if (row.Uses != null ? GUILayout.Button(fittedExtra, muted, GUILayout.Width(extraWidth), Ctl()) : DrawLabel(fittedExtra, muted, extraWidth))
 		{
 			_usageRow = row;
 			_usageScroll = Vector2.zero;
 		}
 		Rect extraRect = GUILayoutUtility.GetLastRect();
-		string full = row.Name + (row.Note.Length > 0 ? "\n" + row.Note : "") + (row.Uses == null ? "" : row.Id.StartsWith("rel:") ? "\n点名字看在哪些剧情里判定" : "\n点名字看在哪些剧情里改动、判定");
+		string full = row.Name + (fittedExtra != TextConverter.ForDisplay(extra) ? " " + extra : "") + (row.Note.Length > 0 ? "\n" + row.Note : "") + (row.Uses == null ? "" : row.Id.StartsWith("rel:") ? "\n点名字看在哪些剧情里判定" : "\n点名字看在哪些剧情里改动、判定");
 		if (full != row.Name || fittedName != displayName)
 		{
 			Hover(nameRect, full);
@@ -446,6 +453,7 @@ public partial class StoryReviewPanel
 		{
 			FlagData f = flag;
 			string note = TextConverter.ToSimplified(f.DevNote ?? "").Replace("\n", " ").Trim();
+			if (UiFlagNames.Descriptions.TryGetValue(f.name, out string[] description)) note = description[0];
 			flags.Add(new StatRow
 			{
 				Id = "flag:" + f.name,
@@ -497,7 +505,7 @@ public partial class StoryReviewPanel
 		_usageScroll = GUILayout.BeginScrollView(_usageScroll);
 		if (uses.Count == 0)
 		{
-			GUILayout.Label("剧本、任务条件里都没找到（可能在商店、弹珠、团战、小游戏里，或者游戏没用到）", _muted);
+			GUILayout.Label("剧本、任务条件里都没找到（可能在商店、弹珠、战役、小游戏里，或者游戏没用到）", _muted);
 		}
 		// 先列改动（给、收），再列判定；同一类里主线、支线按时间排，不属于任务的放最后
 		foreach (bool changes in new[] { true, false })
@@ -537,8 +545,11 @@ public partial class StoryReviewPanel
 		var steps = use.Path.Select(step => StoryScripts.Describe(step, TextConverter.ForDisplay)).ToList();
 		GUILayout.Label(RichText.Strip(what) + (steps.Count > 0 ? "　" + string.Join(" → ", steps.ToArray()) : ""), _muted);
 		GUILayout.EndVertical();
-		GUI.enabled = use.Mission != null;
-		if (GUILayout.Button(use.Mission != null ? "看剧情图" : "不属于任务", use.Mission != null ? _primary : _button, GUILayout.Width(S(140)), GUILayout.Height(S(40))))
+		bool hasFlow = use.Mission != null;
+		GUI.enabled = hasFlow;
+		string flowText = hasFlow ? "看剧情图" : "不属于任务";
+		GUIStyle flowStyle = hasFlow ? _primary : _button;
+		if (GUILayout.Button(flowText, flowStyle, GUILayout.Width(TextWidth(flowText, flowStyle, S(140))), GUILayout.Height(S(40))))
 		{
 			OpenFlow(use.Mission, use.Script);
 		}
@@ -614,7 +625,7 @@ public partial class StoryReviewPanel
 		foreach (ItemData item in collection?.List?.OfType<ItemData>() ?? Enumerable.Empty<ItemData>())
 		{
 			ItemData it = item;
-			// 消耗品（团战里的药之类）游戏不往存档里写数量，改了也存不住，只显示
+			// 消耗品（战役里的药之类）游戏不往存档里写数量，改了也存不住，只显示
 			bool consumable = it.ItemType == GameItemType.消耗品;
 			ItemWarnings.TryGetValue(it.Id, out string warning);
 			string desc = Localized(it.GetDescKey(), "").Replace("\n", " ");
@@ -871,9 +882,28 @@ public partial class StoryReviewPanel
 					string who = Localized("PlayerInfo/Lover/" + s.FinalValue, "");
 					return who.Length > 0 ? "(" + who + ")" : "";
 				}
-				return s.AdditionValue != 0 ? "(" + s.AdditionValue.ToString("+0;-0") + ")" : "";
+				string addition = s.AdditionValue != 0 ? "(" + s.AdditionValue.ToString("+0;-0") + ")" : "";
+				if (type == GameStatType.心理衛生 || type == GameStatType.性情 || type == GameStatType.處世 || type == GameStatType.修養 || type == GameStatType.道德 || type == GameStatType.陰陽內功)
+				{
+					string tier = StatTier(s);
+					return tier.Length > 0 ? ("(" + TextConverter.ForDisplay(tier) + ") " + addition).TrimEnd() : addition;
+				}
+				return addition;
 			},
 		};
+	}
+
+	/// <summary>数值现在是哪一档称号，分档算法和游戏角色面板相同；数值超出范围时按两头的称号算。</summary>
+	private static string StatTier(GameStat stat)
+	{
+		int levels = stat.LevelLength;
+		if (levels == 0 || stat.Max < levels)
+		{
+			return "";
+		}
+		int value = Mathf.Clamp(stat.FinalValue, 0, stat.Max);
+		int level = Mathf.Clamp(GameStatUtils.GetGameStatLevel(value, stat.Max, levels), 0, levels - 1);
+		return Localized(stat.GetLevelText(level), "");
 	}
 
 	private static string Localized(string key, string fallback)
@@ -893,16 +923,7 @@ public partial class StoryReviewPanel
 	}
 
 	/// <summary>好感的人名：类型名（简体）；类型没起名的（同一人的几份好感）用资源名后半段。</summary>
-	private static string RelationshipName(RelationshipStat stat)
-	{
-		string name = stat.Type.ToString();
-		if (name.All(char.IsDigit))
-		{
-			string[] parts = stat.name.Split('_');
-			name = parts.Length > 2 ? string.Join("_", parts.Skip(2).ToArray()) : stat.name;
-		}
-		return TextConverter.ToSimplified(name);
-	}
+	private static string RelationshipName(RelationshipStat stat) => StoryUsage.RelationshipName(stat);
 
 	private readonly Dictionary<GUIStyle, GUIStyle> _oneLine = new Dictionary<GUIStyle, GUIStyle>();
 

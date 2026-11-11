@@ -30,7 +30,8 @@ public static class DataHelper
 				}
 				string text = FormatConditionValName(fieldValue);
 				FormatConditionValName(fieldValue2);
-				string text2 = string.Format("{0} 需{2}{3} → 当前{1}", text, fieldValue.GetResult(), compareOperator, fieldValue2.GetResult());
+				int wanted = fieldValue2.GetResult(), current = fieldValue.GetResult();
+				string text2 = string.Format("{0} 需{2}{3} → 当前{1}", text, current + FlagOption(fieldValue, current), compareOperator, wanted + FlagOption(fieldValue, wanted));
 				text2 = (item.Check() ? RichText.Green(text2) : RichText.Red(text2));
 				list.Add(text2);
 			}
@@ -48,6 +49,7 @@ public static class DataHelper
 	private static string FormatConditionValName(StatGroupVariable variable)
 	{
 		string name = variable.name;
+		if (UiConditionNames.Descriptions.TryGetValue(TextConverter.ToSimplified(name), out string description)) return description;
 		if (name.StartsWith("标记_") || name.StartsWith("旗标_") || name.StartsWith("標記_") || name.StartsWith("旗標_") || IsEnglishAlphanumeric(name))
 		{
 			string text = name;
@@ -97,6 +99,26 @@ public static class DataHelper
 			.Replace("標記_", ""));
 	}
 
+	/// <summary>
+	/// 旗标的数字代表选项时（备注写着「4. 西武林盟」）返回「（西武林盟）」，否则为空。
+	/// 选项名只有游戏原文，韩语、日语、英语界面不显示；放在数字后面，不影响按「 需」解析条件的代码。
+	/// </summary>
+	private static string FlagOption(StatGroupVariable variable, int value)
+	{
+		if (value < 0 || TextConverter.DisplayLanguage is UiText.Korean or UiText.Japanese or UiText.English)
+		{
+			return "";
+		}
+		var values = variable?.GetFieldValue<List<StatValueReference>>("_value");
+		if (values == null || values.Count != 1 || values[0].CheckType != StatCheckType.旗標 || values[0].GetFieldValue<bool>("_negative"))
+		{
+			return "";
+		}
+		string note = values[0].GetFieldValue<FlagData>("_flag")?.DevNote ?? "";
+		var pick = System.Text.RegularExpressions.Regex.Match(note, @"(?:^|\s)" + value + @"[.．、:：]\s*([^\s\r\n]+)");
+		return pick.Success ? "（" + TextConverter.ToSimplified(pick.Groups[1].Value) + "）" : "";
+	}
+
 	private static bool IsEnglishAlphanumeric(string s)
 	{
 		if (string.IsNullOrEmpty(s))
@@ -115,6 +137,7 @@ public static class DataHelper
 
 	private static SwitchResultConfig[] _switchConfigs;
 	private static ConditionResultConfig _conditionConfig;
+	private static int _switchSearchedFrame = -1, _conditionSearchedFrame = -1;
 
 	/// <summary>
 	/// 分支判断表。挂在剧情场景的 CheckPointManager 上，离开剧情场景（养成地图）就拿不到；
@@ -127,8 +150,10 @@ public static class DataHelper
 		{
 			_switchConfigs = instance.GetFieldValue<SwitchResultConfig[]>("_switchList");
 		}
-		else if (_switchConfigs == null || _switchConfigs.Length == 0)
+		else if ((_switchConfigs == null || _switchConfigs.Length == 0) && _switchSearchedFrame != Time.frameCount)
 		{
+			// 全内存搜一遍很慢：养成地图上找不到时，反查要对几千个检查点各查一次，同一帧里只搜一次
+			_switchSearchedFrame = Time.frameCount;
 			_switchConfigs = Resources.FindObjectsOfTypeAll<SwitchResultConfig>();
 		}
 		return _switchConfigs ?? new SwitchResultConfig[0];
@@ -155,10 +180,67 @@ public static class DataHelper
 			StatGroupVariable left = item.GetFieldValue<StatGroupVariable>("_value1");
 			StatGroupVariable right = item.GetFieldValue<StatGroupVariable>("_value2");
 			string op = GetCompareOperator(item.GetFieldValue<StatCompareType>("_compareOp"));
-			string rhs = right != null && right.name.Contains("常") ? right.GetResult().ToString() : FormatConditionValName(right);
+			string rhs = right != null && right.name.Contains("常") ? right.GetResult() + FlagOption(left, right.GetResult()) : FormatConditionValName(right);
 			list.Add(FormatConditionValName(left) + " 需" + op + rhs);
 		}
 		return string.Join(" " + GetLogicOperator(condition.GetFieldValue<LogicOperatorType>("_logicOp")) + " ", list.ToArray());
+	}
+
+	/// <summary>路线旁的条件摘要：按原始类型跳过时间和行动次数，不从显示文字反推条件，也不执行判定。</summary>
+	internal static string ConditionSummary(IEnumerable<ConditionResultItem> conditions, Func<string, string> format)
+	{
+		StatValueReference Single(StatGroupVariable group)
+		{
+			var values = group?.GetFieldValue<List<StatValueReference>>("_value");
+			var type = group != null ? group.GetFieldValue<StatGroupType>("_groupType") : default;
+			return values?.Count == 1 && (type == StatGroupType.Sum || type == StatGroupType.Max || type == StatGroupType.Min || type == StatGroupType.Multiply) ? values[0] : null;
+		}
+		int? Constant(StatValueReference value) => value?.CheckType == StatCheckType.常數
+			? value.GetFieldValue<int>("_constant") * (value.GetFieldValue<bool>("_negative") ? -1 : 1) : (int?)null;
+		bool Routine(StatCompareItem item)
+		{
+			var value = Single(item.GetFieldValue<StatGroupVariable>("_value1"));
+			if (value?.CheckType == StatCheckType.遊戲時間) return true;
+			var type = value?.CheckType == StatCheckType.角色數值 ? value.GetFieldValue<GameStat>("_stat")?.StatType : null;
+			return type == GameStatType.行動次數 || type == GameStatType.額外行動次數_1 || type == GameStatType.額外行動次數_2 || type == GameStatType.額外行動次數_3;
+		}
+		string Operand(StatGroupVariable group)
+		{
+			if (group == null) return "";
+			var value = Single(group);
+			int? number = Constant(value);
+			if (number != null) return number.Value.ToString();
+			var flag = value?.CheckType == StatCheckType.旗標 ? value.GetFieldValue<FlagData>("_flag") : null;
+			string name = flag != null ? GetFlagName(flag) : "";
+			if (name.Length == 0) name = FormatConditionValName(group);
+			return (value != null && value.GetFieldValue<bool>("_negative") ? "-" : "") + format(name);
+		}
+		string Describe(StatCompareItem item)
+		{
+			var left = item.GetFieldValue<StatGroupVariable>("_value1");
+			var right = item.GetFieldValue<StatGroupVariable>("_value2");
+			var op = item.GetFieldValue<StatCompareType>("_compareOp");
+			var value = Single(left);
+			var flag = value?.CheckType == StatCheckType.旗標 && !value.GetFieldValue<bool>("_negative") ? value.GetFieldValue<FlagData>("_flag") : null;
+			int? number = Constant(Single(right));
+			// 编号选项来自旗标原始备注；编号和比较方式来自资料，不解析译文中的「需=」等字样。
+			if (flag != null && op == StatCompareType.Equal && number >= 0)
+			{
+				var pick = System.Text.RegularExpressions.Regex.Match(flag.DevNote ?? "", @"(?:^|\s)" + number.Value + @"[.．、:：]\s*([^\s\r\n]+)");
+				if (pick.Success) return Operand(left) + "：" + format(TextConverter.ToSimplified(pick.Groups[1].Value));
+			}
+			return Operand(left) + GetCompareOperator(op) + Operand(right);
+		}
+		foreach (ConditionResultItem condition in conditions)
+		{
+			var items = condition?.GetFieldValue<List<StatCompareItem>>("_items")?.Where(item => item != null).ToList();
+			var first = items?.FirstOrDefault(item => !Routine(item));
+			if (first == null) continue;
+			// OR 组不能只留其中一项；否则摘要会把可选条件写成必需条件。
+			return condition.GetFieldValue<LogicOperatorType>("_logicOp") == LogicOperatorType.OR
+				? string.Join(format(" 或 "), items.Select(Describe).ToArray()) : Describe(first);
+		}
+		return "";
 	}
 
 	/// <summary>条件检查表，取法同 SwitchConfigs。</summary>
@@ -169,12 +251,92 @@ public static class DataHelper
 		{
 			_conditionConfig = instance.GetFieldValue<ConditionResultConfig>("_condition");
 		}
-		else if (_conditionConfig == null)
+		else if (_conditionConfig == null && _conditionSearchedFrame != Time.frameCount)
 		{
+			_conditionSearchedFrame = Time.frameCount;
 			ConditionResultConfig[] found = Resources.FindObjectsOfTypeAll<ConditionResultConfig>();
 			_conditionConfig = found.Length > 0 ? found[0] : null;
 		}
 		return _conditionConfig;
+	}
+
+	/// <summary>只取检查点的条件资料，不调用 Check/Execute，也不读取随机值。</summary>
+	internal static List<ConditionResultItem> CheckpointConditions(string key, bool isSwitch)
+	{
+		if (isSwitch)
+		{
+			SwitchResultData data = SwitchData(key);
+			if (data != null) return data.GetFieldValue<bool>("_useCount") ? new List<ConditionResultItem>() : data.GetFieldValue<List<ConditionResultItem>>("_items") ?? new List<ConditionResultItem>();
+		}
+		else
+		{
+			ConditionResultData data = ConditionData(key);
+			if (data != null) return data.GetFieldValue<List<ConditionResultItem>>("_items") ?? new List<ConditionResultItem>();
+		}
+		return new List<ConditionResultItem>();
+	}
+
+	// 游戏按名字逐个比对查检查点（每次都取 Unity 对象的 name），反查时几千个检查点这样查要好几秒；按名字建一次表
+	private static Dictionary<string, SwitchResultData> _switchByName;
+	private static Dictionary<string, ConditionResultData> _conditionByName;
+	private static SwitchResultConfig[] _switchIndexed;
+	private static ConditionResultConfig _conditionIndexed;
+	private static int _switchIndexedCount, _conditionIndexedCount;
+
+	private static SwitchResultData SwitchData(string key)
+	{
+		SwitchResultConfig[] configs = SwitchConfigs();
+		// 剧情 Mod 进剧情时才往表里加条目，表还是同一个，要看条数
+		int count = configs.Sum(config => config?.List?.Count ?? 0);
+		if (_switchByName == null || !ReferenceEquals(_switchIndexed, configs) || _switchIndexedCount != count)
+		{
+			_switchByName = new Dictionary<string, SwitchResultData>(StringComparer.Ordinal);
+			foreach (SwitchResultConfig config in configs)
+			{
+				foreach (SwitchResultData data in config?.List ?? new List<SwitchResultData>())
+				{
+					// 和游戏的 GetData 一样，同名的取第一个
+					if (data != null && !_switchByName.ContainsKey(data.name)) _switchByName[data.name] = data;
+				}
+			}
+			_switchIndexed = configs;
+			_switchIndexedCount = count;
+		}
+		return key != null && _switchByName.TryGetValue(key, out SwitchResultData found) ? found : null;
+	}
+
+	private static ConditionResultData ConditionData(string key)
+	{
+		ConditionResultConfig config = ConditionConfig();
+		int count = config?.List?.Count ?? 0;
+		if (_conditionByName == null || !ReferenceEquals(_conditionIndexed, config) || _conditionIndexedCount != count)
+		{
+			_conditionByName = new Dictionary<string, ConditionResultData>(StringComparer.Ordinal);
+			foreach (ConditionResultData data in config?.List ?? new List<ConditionResultData>())
+			{
+				if (data != null && !_conditionByName.ContainsKey(data.name)) _conditionByName[data.name] = data;
+			}
+			_conditionIndexed = config;
+			_conditionIndexedCount = count;
+		}
+		return key != null && _conditionByName.TryGetValue(key, out ConditionResultData found) ? found : null;
+	}
+
+	internal static bool CheckpointsAvailable => ConditionConfig() != null && SwitchConfigs().Length > 0;
+
+	internal static List<string> CheckpointTemplates(string key, bool isSwitch)
+	{
+		if (isSwitch)
+		{
+			var data = SwitchData(key);
+			if (data != null && data.GetFieldValue<bool>("_useCount"))
+				return (data.GetFieldValue<List<ValueCompareItem>>("_countItems") ?? new List<ValueCompareItem>()).Select(item =>
+					"执行次数 " + GetCompareOperator(item.GetFieldValue<StatCompareType>("_compareOp")) + item.GetFieldValue<int>("_value")).ToList();
+		}
+		var items = CheckpointConditions(key, isSwitch);
+		if (items.Count > 0) return items.Select(item => item == null ? "" : ConditionTemplate(item)).ToList();
+		if (isSwitch) return ConditionBook.Switches.TryGetValue(key, out var arms) ? arms : new List<string>();
+		return ConditionBook.Conditions.TryGetValue(key, out string text) ? new List<string> { text } : new List<string>();
 	}
 
 	/// <summary>分支判断第 branch 支的条件文字（0 = 以上都不满足），找不到时返回空。</summary>
@@ -320,8 +482,13 @@ public static class DataHelper
 		{
 			return false;
 		}
-		string fieldValue2 = byKey.GetFieldValue<string>("_desc");
-		fieldValue2 = (fieldValue2.IsNullOrWhiteSpace() ? byKey.name : fieldValue2);
+		string fieldValue2 = UiQuestNames.Description(byKey.Key, byKey.GetFieldValue<string>("_desc"));
+		// 游戏没写说明的任务用路线图整理好的标题，还没读完剧本时先显示编号
+		if (fieldValue2.IsNullOrWhiteSpace())
+		{
+			string atlasTitle = LOMAssistant.Features.Story.StoryAtlas.Find(byKey.Key)?.Title;
+			fieldValue2 = string.IsNullOrEmpty(atlasTitle) ? byKey.name : atlasTitle;
+		}
 		// 用界面翻译已有的分隔符，让编号和完整任务名分别查表。
 		item = fieldValue + " · " + fieldValue2;
 		string text = byKey.Position.ToString();
@@ -504,6 +671,12 @@ public static class DataHelper
 
 	public static string LoadLuaScript(string scriptName)
 	{
+		// 剧情 Mod 顶替的剧本不在游戏资源里，见 ModScripts
+		string mod = ModScripts.Text(scriptName);
+		if (mod != null)
+		{
+			return mod;
+		}
 		string text = scriptName.ToLower();
 		TextAsset textAsset = Resources.Load<TextAsset>("story/chinesetraditional/" + text);
 		return ((textAsset != null) ? textAsset.text : null) ?? string.Empty;

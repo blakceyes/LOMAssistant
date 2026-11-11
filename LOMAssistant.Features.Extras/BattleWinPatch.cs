@@ -1,17 +1,21 @@
 using System;
 using HarmonyLib;
+using LOMAssistant.Config;
 using Mortal.Battle;
 using UnityEngine.UI;
 
 namespace LOMAssistant.Features.Extras;
 
 /// <summary>
-/// 团战直接获胜：在团战暂停界面“放弃”按钮下方加一个“直接获胜”按钮，
+/// 战役直接获胜：在战役暂停界面“放弃”按钮下方加一个“直接获胜”按钮，
 /// 调用游戏自带（但隐藏）的测试按钮逻辑 PausePanel.WinButtonClick。
 /// </summary>
 public static class BattleWinPatch
 {
 	private const string ButtonName = "LOMAssistant_BattleWinButton";
+
+	/// <summary>设置页开关：已经加好的按钮马上跟着显示、隐藏。</summary>
+	internal static void SettingChanged(bool on) => MenuButtonHelper.SetVisible(ButtonName, on);
 
 	[HarmonyPostfix]
 	[HarmonyPatch(typeof(PausePanel), "Awake")]
@@ -23,16 +27,17 @@ public static class BattleWinPatch
 			Button giveup = tr.Field("_giveupButton").GetValue<Button>();
 			if (giveup == null)
 			{
-				LOMAssistantPlugin.LogWarning("团战直接获胜：找不到放弃按钮。");
+				LOMAssistantPlugin.LogWarning("战役直接获胜：找不到放弃按钮。");
 				return;
 			}
 
 			Button win = MenuButtonHelper.CloneButton(giveup, "直接获胜", ButtonName);
 			MenuNavChain.Ensure(win.transform.parent);
+			win.gameObject.SetActive(ConfigManager.EnableBattleWin.Value);
 			win.onClick.AddListener(() =>
 			{
-				LOMAssistantPlugin.LogInfo("团战直接获胜：已执行。");
-				FileLogger.Log("团战直接获胜：已执行。");
+				LOMAssistantPlugin.LogInfo("战役直接获胜：已执行。");
+				FileLogger.Log("战役直接获胜：已执行。");
 				Traverse.Create(__instance).Method("WinButtonClick").GetValue();
 			});
 
@@ -43,11 +48,11 @@ public static class BattleWinPatch
 				tr.Field("_interactableButtons").SetValue(buttons.AddToArray(win));
 			}
 
-			FileLogger.Log("团战直接获胜：已添加按钮 " + MenuButtonHelper.DescribeHierarchy(win.transform));
+			FileLogger.Log("战役直接获胜：已添加按钮 " + MenuButtonHelper.DescribeHierarchy(win.transform));
 		}
 		catch (Exception e)
 		{
-			LOMAssistantPlugin.LogError("团战直接获胜：添加按钮失败: " + e);
+			LOMAssistantPlugin.LogError("战役直接获胜：添加按钮失败: " + e);
 		}
 	}
 }

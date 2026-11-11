@@ -77,7 +77,7 @@ public partial class AnytimeSave : MonoBehaviour
 	}
 	internal static string StoreRoot => Path.Combine(SaveRoot, "AnytimeSave");
 
-	/// <summary>正在读的随时存档存的时候开着「强行选条件没满足的选项」。</summary>
+	/// <summary>正在读的随时存档存的时候开着「显示未满足条件的选项」。</summary>
 	internal bool LoadingHiddenOptions => loading != null && loading.hiddenOptions;
 
 	/// <summary>
@@ -162,6 +162,8 @@ public partial class AnytimeSave : MonoBehaviour
 	{
 		active = -1; busy = false;
 		if (next.name != "Story" && !Restoring) { trace.Clear(); stamps.Clear(); rootScript = null; ClearRollback(); }
+		// 回到标题（之后可能读别的档、开新游戏）：分支回退点作废；读随时存档、回退时经过标题界面不算
+		if (next.name == "Title" && !Restoring) ClearBranchPoint();
 	}
 
 	// 恢复途中剧本的 Lua 协程报错就停了，剧情不会再往下走；不用等 180 秒超时，直接停下并说明
@@ -202,7 +204,7 @@ public partial class AnytimeSave : MonoBehaviour
 		var game = JsonUtility.FromJson<GameSave>(data.gameJson);
 		ApplyData.Invoke(SaveSystem.Instance, new object[] { game });
 		// 回想（1.0.6001 起写进存档）：游戏读档时在 ExecuteLoadGameData 外面另读，这里照做，不然回到的这一刻之后的记录还留着、重演时再记一遍
-		StoryLogData.Load(game);
+		StoryLogCompat.Load(game);
 		if (!string.IsNullOrEmpty(data.nativeSlot)) SaveSystem.Instance.SetSlot(data.nativeSlot);
 		PlayerStatManagerData.Instance.SetStoryScript(atTarget || data.scene == "Free" ? data.currentScript : data.rootScript);
 		if (atTarget) PlayerStatManagerData.Instance.SetStartScript(game.StartStoryScript);
@@ -214,7 +216,7 @@ public partial class AnytimeSave : MonoBehaviour
 	internal string PrepareScript(LuaEnvironment env, string code, string name)
 	{
 		if (!name.EndsWith(".LuaScript", StringComparison.Ordinal) || name == "tmp.LuaScript") return code;
-		// 版本核对按原剧本：「强行选条件没满足的选项」改过的剧本（见 HiddenOptions）也按改之前的算
+		// 版本核对按原剧本：「显示未满足条件的选项」改过的剧本（见 HiddenOptions）也按改之前的算
 		string original = LOMAssistant.HiddenOptions.Original(code);
 		string hash = Hash(original);
 		string shortName = name.Substring(0, name.Length - 10);
@@ -246,16 +248,21 @@ public partial class AnytimeSave : MonoBehaviour
 		return result;
 	}
 
-	/// <summary>给剧情脚本套上记录/回放包装：台词、选项、掷骰、查询改成 ams_* 调用，数据修改在回放时跳过。</summary>
+	/// <summary>
+	/// 给剧情脚本套上记录/回放包装：台词、选项、掷骰、查询改成 ams_* 调用，数据修改在回放时跳过。
+	/// 剧情 Mod 的剧本（用 Binarizer 的 ext.Get*）会在 if 和局部函数里读旗标、改旗标：读取要记下来回放，
+	/// 修改的参数里可能有读取，回放时也要照样算，所以不跳过整行，只在调用时跳过（__ams_do）。原版剧本没有 ext，还是整行跳过。
+	/// </summary>
 	public static string Transform(string code)
 	{
+		bool modScript = code.Contains("ext.Get");
 		var output = new StringBuilder();
 		foreach (string line in code.Replace("\r\n", "\n").Split('\n'))
 		{
 			string trimmed = line.TrimStart();
-			bool mutate = trimmed.StartsWith("statmodifymanager.") && !trimmed.StartsWith("statmodifymanager.Get");
+			bool mutate = !modScript && trimmed.StartsWith("statmodifymanager.") && !trimmed.StartsWith("statmodifymanager.Get");
 			mutate |= trimmed.StartsWith("runwait(statmodifymanager.");
-			mutate |= Mutators.Any(n => trimmed.StartsWith(n + "("));
+			mutate |= !modScript && Mutators.Any(n => trimmed.StartsWith(n + "("));
 			bool panelCall = Regex.IsMatch(trimmed, @"^runwait\((?:\w*panel|intropanel)\.Open\(");
 			string transformed = Token.Replace(line, delegate (Match m)
 			{
@@ -266,6 +273,9 @@ public partial class AnytimeSave : MonoBehaviour
 				if (n == "dicemenudialog.ResultSelection") return "ams_query('dice.ResultSelection', function() return dicemenudialog.ResultSelection end)";
 				if (k >= line.Length || line[k] != '(') return n;
 				if (Queries.Contains(n)) return "__Q__" + n;
+				// ext.GetTimeValue 只是换算日期，不读游戏状态
+				if (modScript && n.StartsWith("ext.Get") && n != "ext.GetTimeValue") return "__Q__" + n;
+				if (modScript && !mutate && ((n.StartsWith("statmodifymanager.") && !n.StartsWith("statmodifymanager.Get")) || Mutators.Contains(n))) return "__M__" + n;
 				if (n == "say") return "ams_say";
 				if (n == "choose") return "ams_choose";
 				if (n == "choosetimer") return "ams_choosetimer";
@@ -274,11 +284,11 @@ public partial class AnytimeSave : MonoBehaviour
 				if (n == "runwait" && panelCall) return "ams_panel";
 				return n;
 			});
-			transformed = Regex.Replace(transformed, @"__Q__([\w.]+)\s*\(\s*", delegate (Match m)
+			transformed = Regex.Replace(transformed, @"__(Q|M)__([\w.]+)\s*\(\s*", delegate (Match m)
 			{
-				string n = m.Groups[1].Value;
+				string n = m.Groups[2].Value;
 				bool empty = m.Index + m.Length < transformed.Length && transformed[m.Index + m.Length] == ')';
-				return "ams_query('" + n + "', " + n + (empty ? "" : ", ");
+				return (m.Groups[1].Value == "Q" ? "ams_query('" + n + "', " : "__ams_do(") + n + (empty ? "" : ", ");
 			});
 			if (mutate) transformed = "if not __ams_replaying() then __ams_mutate() " + transformed + " end";
 			output.AppendLine(transformed);
@@ -290,6 +300,15 @@ public partial class AnytimeSave : MonoBehaviour
 	{
 		script.Globals["__ams_replaying"] = DynValue.NewCallback((c, a) => DynValue.NewBoolean(Replaying));
 		script.Globals["__ams_mutate"] = DynValue.NewCallback((c, a) => { OnMutate(); return DynValue.Nil; });
+		// 不写进 Replay.lua：它的哈希是随时存档的兼容标识
+		script.Globals["__ams_do"] = DynValue.NewCallback((c, a) =>
+		{
+			if (Replaying) return DynValue.Nil;
+			OnMutate();
+			var args = new DynValue[Math.Max(0, a.Count - 1)];
+			for (int i = 0; i < args.Length; i++) args[i] = a[i + 1];
+			return script.Call(a[0], args);
+		});
 		script.Globals["__ams_busy"] = DynValue.NewCallback((c, a) => { busy = a[0].Boolean; return DynValue.Nil; });
 		script.Globals["__ams_begin"] = DynValue.NewCallback((c, a) => DynValue.NewBoolean(Begin(a[0].String, a[1].String)));
 		script.Globals["__ams_end"] = DynValue.NewCallback((c, a) => { End(a[0]); return DynValue.Nil; });
@@ -499,6 +518,7 @@ public partial class AnytimeSave : MonoBehaviour
 		try { data = ReadSave(Path.Combine(StoreRoot, name)); }
 		catch (Exception ex) { Notice("无法读取：" + ex.Message); return; }
 		ClearRollback();
+		ClearBranchPoint();
 		SaveSummary summary = Saves().FirstOrDefault(x => x.file == name);
 		restoreLabel = "已读取随时存档 " + (summary != null ? DisplayName(summary) : name);
 		LoadFrom(data);
@@ -562,6 +582,12 @@ public partial class AnytimeSave : MonoBehaviour
 		{ if (Time.realtimeSinceStartup - start > 30) { Fail("标题场景加载超时"); yield break; } yield return null; }
 		yield return null;
 		Apply(loading, false);
+		// 原版读档后都要刷新任务：哪些支线、主线现在能触发是算出来存在内存里的，不刷新就还是读档前的结果，
+		// 限时事件触发不了，要过一次行动才恢复。Story 不刷新：这里主线可能改当前剧本，重演要从 rootScript 开始，走完剧情游戏自己会刷新
+		if (loading.scene == "Free")
+		{
+			MissionManagerData.Instance.UpdateCheckMissions();
+		}
 		trace = new List<Entry>(loading.trace); stamps = new List<ScriptStamp>(loading.scripts);
 		rootScript = loading.rootScript; target = loading.target; cursor = 0; active = -1;
 		Replaying = loading.scene == "Story";
@@ -586,8 +612,25 @@ public partial class AnytimeSave : MonoBehaviour
 		}
 	}
 
+	private bool replayMuted;
+
+	/// <summary>
+	/// 重演时静音。动的是总音量 RTPC：剧本的淡入淡出用 BackgroundMusic、EnvSound，互不影响，RestoreSound 照常工作。
+	/// 只看 Replaying，正常结束、失败、超时都走这里；设置里的音量不改，半路退游戏也不会留下静音。
+	/// </summary>
+	private void UpdateReplayMute()
+	{
+		if (Replaying != replayMuted)
+		{
+			replayMuted = Replaying;
+			AkSoundEngine.SetRTPCValue("MasterVolume", replayMuted ? 0 : SystemSettings.MasterVolume, null, replayMuted ? 0 : 300);
+		}
+	}
+
 	private void Update()
 	{
+		UpdateReplayMute();
+		UpdateRestoreMask();
 		if (Replaying)
 		{
 			Time.timeScale = 30;
@@ -816,6 +859,11 @@ public partial class AnytimeSave : MonoBehaviour
 /// <summary>随时存档用到的游戏补丁。只在功能启用且版本核验通过时应用。</summary>
 public static class AnytimeSavePatches
 {
+	/// <summary>Fungus 的屏幕淡入淡出画在 OnGUI 里，压在所有界面上面，重演时不画，遮罩才不闪；淡入淡出的状态照常走，结束后是对的。</summary>
+	[HarmonyPrefix]
+	[HarmonyPatch(typeof(Fungus.CameraManager), "OnGUI")]
+	public static bool CameraFade_Prefix() => !AnytimeSave.Replaying;
+
 	// 回放可能走到一个选项菜单，但菜单从没激活过、按钮缓存还是空的；原版这里会空引用，导致状态页其它分页关不掉
 	[HarmonyPrefix]
 	[HarmonyPatch(typeof(CustomMenuDialog), "InteractableCacheButton")]
@@ -845,6 +893,14 @@ public static class AnytimeSavePatches
 	[HarmonyPatch(typeof(SaveSystem), "DeleteSaveData")]
 	public static bool DeleteSaveData_Prefix() => AllowWrite();
 
+	// 读原版存档：分支回退点是读档前那条剧情线上的，作废
+	[HarmonyPostfix]
+	[HarmonyPatch(typeof(SaveSystem), "ExecuteLoadGameData")]
+	public static void ExecuteLoadGameData_Postfix()
+	{
+		if (!AnytimeSave.Replaying && !AnytimeSave.Restoring) AnytimeSave.Instance?.ClearBranchPoint();
+	}
+
 	private static bool AllowWrite() => !AnytimeSave.Replaying && !AnytimeSave.Restoring && !AnytimeSave.Faulted;
 
 	// 排在本 Mod 其它 LoadLuaFunction 补丁之后，让信息窗口、选项提示解析的还是原始剧本
@@ -868,3 +924,4 @@ public static class AnytimeSavePatches
 	[HarmonyPatch(typeof(DiceMenuDialog), "GetPressInput")]
 	public static bool GetPressInput_Prefix(ref bool __result) => AnytimeSave.AutoStartRestoredDice(ref __result);
 }
+

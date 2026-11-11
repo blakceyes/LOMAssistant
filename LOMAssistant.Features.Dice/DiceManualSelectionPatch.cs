@@ -17,6 +17,9 @@ public static class DiceManualSelectionPatch
 
 	public static bool RollHasStarted;
 
+	/// <summary>上一次直接点线路是什么时候（真实时间）：这样选的结果，游戏记下的点数不作数，主动陪玩用它分辨。</summary>
+	public static float ChosenAt = -100f;
+
 	[HarmonyPostfix]
 	[HarmonyPatch(typeof(DiceMenuDialog), "OnEnable")]
 	public static void OnEnable_Postfix(DiceMenuDialog __instance)
@@ -62,13 +65,15 @@ public static class DiceManualSelectionPatch
 	/// <summary>选定第 i 条线路（鼠标点击和手柄共用）。</summary>
 	public static void Choose(int i)
 	{
-		if (!(Menu == null))
+		// 设置页里中途关掉后，已经挂上的点击不再生效
+		if (!(Menu == null) && ConfigManager.EnableManualDiceSelection.Value)
 		{
 			LOMAssistantPlugin.LogInfo("骰子手动选择：选中线路 " + i);
 			FileLogger.Log("[DicePatch] OnButtonClick: line=" + i);
 			Traverse traverse = Traverse.Create(Menu);
 			IsClickedIndex = i;
 			IsClicked = true;
+			ChosenAt = UnityEngine.Time.realtimeSinceStartup;
 			traverse.Field("_resultSelection").SetValue(i);
 			Menu.UpdateSelection();
 			FileLogger.Log("[DicePatch] OnButtonClick: RollHasStarted=" + RollHasStarted);
