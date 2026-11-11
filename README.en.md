@@ -33,6 +33,7 @@ The zip already contains BepInEx.
 | F8 | Settings; on the save screen, edit the note of the selected save |
 | F9 | Stats page |
 | F10 | Memo window |
+| L | Open / close the duel backlog during a duel |
 | F5 / F7 / F6 | Save-anywhere: new save / load the latest / list all |
 | F2 | Skip read dialogue until an unread line |
 | F4 | Roll back to before the last story check |
@@ -119,12 +120,13 @@ Connect a large language model with your own API key to ask about the story and 
 
   <img src="media/story-jump.webp" width="640" alt="Story jump: before jumping it lists the quest, date and changes filled in, lets you bond with someone, and lets you pick each fork on the way">
 
-- **Collection**: records from all playthroughs, split into story, endings, deaths, achievements and ending CGs.
+- **Collection**: records from all playthroughs, split into story, heroine routes, endings, deaths, achievements and ending CGs.
   - Story counts how much of each quest's dialogue you have read; endings, deaths, achievements and ending CGs show their gallery numbers and whether you have them. For anything missing it says where and how to get it.
+  - Heroine routes counts, for each character you can bond with, how much of her route's dialogue you have read and her endings; expand one to see it by quest.
   - Each entry lists the quests that lead to it; click one to open that quest's story map.
   - On the ending CG page, **Watch the credits** replays the end credits in a story scene; press Esc to stop.
 
-  <img src="media/story-endings.webp" width="640" alt="Collection: story, endings, deaths, achievements and ending CGs, filter by done or not">
+  <img src="media/story-endings.webp" width="640" alt="Collection: story, heroine routes, endings, deaths, achievements and ending CGs, filter by done or not">
 
 ### Story helpers
 
@@ -201,6 +203,7 @@ Connect a large language model with your own API key to ask about the story and 
 
 ### Combat
 
+- **Duel backlog** (L, on by default): press L or click **Duel backlog** to review taunts, dialogue from both fighters and other characters, and narration actually shown in the current duel, in order and with the displayed language and speaker names. The duel pauses while the window is open and resumes when it closes. The window keeps recent entries and clears them when you leave the duel. Dialogue is also copied to the game's backlog for the current session only; it is not written to saves. The switch is under **Combat**, and the key can be changed under **Hotkeys**.
 - **Stronger duel enemies**: raises enemy health and stats at the start of a duel based on the total of your six main stats; strong enemies stay clearly stronger than ordinary ones. Enemies also choose moves based on both sides' stamina and health and on the move you keep repeating.
 - **Enemy move forecast**: shows the enemy's chosen move; the window can be moved and resized.
 - **Death-on-defeat notice** (spoilers): when losing a fight leads to a death, the top of the screen shows its name and whether you have collected it for the whole fight. If other conditions also apply after the loss, it says the loss may mean death; deaths caused by options are not shown.
