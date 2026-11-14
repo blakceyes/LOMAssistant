@@ -48,6 +48,20 @@ public static class GalleryDuelBuffTests
 		Assert(Preview(p, "B0014").All(v => v == 110), "Xingyi mastery multiplier differs from native rule");
 	}
 
+	public static void TestGalleryBuffMasteryIsResolvedBeforeDependentBonuses()
+	{
+		var profile = GalleryDuelCatalog.Instance.Profile("Enemy_向無憂_003");
+		var options = GalleryDuelBuffPreview.Options(profile, null);
+		Assert(options.Any(option => option.Key == "B0014"), "Emei option missing from Xiang Wuyou");
+		var xingyi = profile.Skills.Single(skill => skill.Key == "Z005");
+		Assert(GalleryDuelBuffPreview.SkillKey(xingyi) == "Z005_9", "Xiang Wuyou's mastery setter key is incorrect");
+		Assert(GalleryDuelCatalog.Instance.Buffs["Z005_9"].Modifiers.Any(modifier => modifier.Kind == "SetMastery" && modifier.Source == 4 && modifier.Value == 9), "Xiang Wuyou's mastery setter rule is missing");
+		int[] emeiOnly = Preview(profile, "B0014");
+		Assert(emeiOnly.SequenceEqual(profile.Six.Select(value => value + (int)Math.Round(value * 0.18f))), "Emei should apply the learned Xingyi multiplier to all six stats");
+		int[] result = Preview(profile, "B0013_9", "B0014");
+		Assert(result[3] == 123, $"Xiang Wuyou's Xingyi level must be applied before Emei Nineteen Stances (got {result[3]})");
+	}
+
 	public static void TestGalleryBuffTriggeredStatesAndStoryChoices()
 	{
 		var c = GalleryDuelCatalog.Instance;

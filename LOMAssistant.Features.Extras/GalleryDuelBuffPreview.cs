@@ -97,6 +97,13 @@ internal static class GalleryDuelBuffPreview
 				else Modify(key, m);
 			}
 		}
+		// Resolve active mastery-setting talents before any six-stat bonuses that depend on them.
+		foreach (DuelSkill skill in profile.Skills.OrderBy(s => s.Priority))
+		{
+			if (skill.Level <= 0 || !catalog.TryGetValue(SkillKey(skill), out DuelBuff buff)) continue;
+			foreach (DuelBuffModifier modifier in buff.Modifiers)
+				if (modifier.Kind == "SetMastery") Modify(SkillKey(skill), modifier);
+		}
 		foreach (DuelSkill skill in profile.Skills.OrderBy(s => s.Priority))
 			if (skill.Level > 0) Apply(SkillKey(skill), enabled.Contains(SkillKey(skill)));
 		foreach (DuelBuffOption option in options)
