@@ -260,6 +260,10 @@ public sealed partial class Gallery
 		{
 			GUILayout.Label(_foeCatalogError ?? TextConverter.ForDisplay(_foeLoading ? "正在加载…" : "此立绘没有关联的决斗配置"), _foeWrapped);
 		}
+		else if (_foeShowTaunts)
+		{
+			DrawFoeTaunts(_foeEncounter);
+		}
 		else
 		{
 			DuelProfile profile = GalleryDuelCatalog.Instance.Profile(_foeEncounter.StatId);
