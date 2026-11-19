@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace LOMAssistant;
 
-[BepInPlugin("LOMAssistant", "咖啡伴侣", "3.7.3")]
+[BepInPlugin("LOMAssistant", "咖啡伴侣", "3.7.7")]
 public class LOMAssistantPlugin : BaseUnityPlugin
 {
 	private Harmony _harmony;
@@ -238,6 +238,8 @@ public class LOMAssistantPlugin : BaseUnityPlugin
 			TryPatchAll(typeof(TitlePartnerPatch));
 			LOMAssistant.Features.Extras.Gallery.Ensure(base.gameObject);
 			TryPatchAll(typeof(LOMAssistant.Features.Extras.GalleryPatch));
+			// 逐个打补丁：一个打不上不连累其他，只有存档保护缺了才不让开始
+			GalleryDuelPractice.Install(_harmony);
 			TryPatchAll(typeof(SettingsDiagnosticsButton));
 			TryPatchAll(typeof(FateBonusRepeat));
 			TryPatchAll(typeof(InputGuardActionGate));

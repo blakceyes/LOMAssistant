@@ -141,8 +141,16 @@ public partial class StoryReviewPanel
 			}
 			fx += w + S(8);
 		}
-		List<SaveSummary> shown = saves.Where(s => _anytimeFilter == 0 || (_anytimeFilter == 1 && s.scene == "Story")
-			|| (_anytimeFilter == 2 && s.scene == "Free") || (_anytimeFilter == 3 && !string.IsNullOrEmpty(s.note))).ToList();
+		// 筛选、分组只在存档、筛选、排法、有备注的个数变了时重算：存档上千个时每次刷新都重算会卡
+		int noted = saves.Count(s => !string.IsNullOrEmpty(s.note));
+		var signature = (saves, saves.Count, _anytimeFilter, sort, noted);
+		if (_anytimeGroups == null || !_anytimeGroupsFor.Equals(signature))
+		{
+			List<SaveSummary> shown = saves.Where(s => _anytimeFilter == 0 || (_anytimeFilter == 1 && s.scene == "Story")
+				|| (_anytimeFilter == 2 && s.scene == "Free") || (_anytimeFilter == 3 && !string.IsNullOrEmpty(s.note))).ToList();
+			_anytimeGroups = AnytimeGroups(shown, sort);
+			_anytimeGroupsFor = signature;
+		}
 
 		var area = new Rect(r.x, r.y + S(114), r.width, r.height - S(114));
 		DragScroll("anytime", area, ref _anytimeScroll);
@@ -152,25 +160,40 @@ public partial class StoryReviewPanel
 		{
 			GUILayout.Label("还没有随时存档。在剧情的台词、选项、掷骰时或养成界面按 " + InputGuard.KeyName(ConfigManager.AnytimeSaveKey.Value) + " 存一个。", _muted);
 		}
-		else if (shown.Count == 0)
+		else if (_anytimeGroups.Count == 0)
 		{
 			GUILayout.Label("没有符合筛选的随时存档。", _muted);
 		}
-		// 分组（存档列表本来按存的时间从新到旧），每组可以折起来、整组删除
-		foreach (var (key, label, items) in AnytimeGroups(shown, sort))
+		// 分组（存档列表本来按存的时间从新到旧），每组可以折起来、整组删除；存档上千个时只画看得见的附近几屏
+		_anytimeRows.Begin((int)area.width + "|" + _rich.fontSize + "|" + TextConverter.DisplayLanguage, _anytimeScroll.y, area.height, saves.Count, S(96));
+		foreach (var (key, label, items) in _anytimeGroups)
 		{
-			DrawAnytimeGroup(save, key, label, items);
-			if (!_anytimeFolded.Contains(key))
+			if (_anytimeRows.Row("g|" + key, label + "|" + items.Count + "|" + (_deleteGroup == key), S(44)))
 			{
-				foreach (SaveSummary s in items)
+				DrawAnytimeGroup(save, key, label, items);
+				_anytimeRows.Measure(S(44), false);
+			}
+			if (_anytimeFolded.Contains(key))
+			{
+				continue;
+			}
+			foreach (SaveSummary s in items)
+			{
+				if (_anytimeRows.Row("r|" + s.file, s.note + "|" + (_noteFile == s.file) + "|" + (s.error != null) + "|" + s.preview.Length))
 				{
 					DrawAnytimeRow(save, s);
+					_anytimeRows.Measure();
 				}
 			}
 		}
+		_anytimeRows.End();
 		GUILayout.EndScrollView();
 		GUILayout.EndArea();
 	}
+
+	private readonly LazyRows _anytimeRows = new LazyRows();
+	private List<(string Key, string Label, List<SaveSummary> Items)> _anytimeGroups;
+	private (List<SaveSummary>, int, int, int, int) _anytimeGroupsFor;
 
 	/// <summary>存档时的游戏月份（「第2年　3月」，中间全角空格让两半各自翻译），分组用；没记下日期的归到一组。</summary>
 	private static string AnytimeMonth(SaveSummary s)
